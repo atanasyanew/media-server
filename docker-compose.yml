@@ -154,9 +154,9 @@ services:
     volumes:
       - ./provision/heimdall:/config
     ports:
-      - "8083:80"
-      # - "80:80"
-      # - "443:443"
+      - "80:80"
+      - "443:443"
+      # - "8083:80"
     restart: unless-stopped
     networks:
       - media-network
