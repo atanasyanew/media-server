@@ -1,6 +1,5 @@
 # Ignore all files in the content directory
 
-
-# content/*
+content/*
 # provision/*
 
