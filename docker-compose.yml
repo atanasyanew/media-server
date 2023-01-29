@@ -1,0 +1,165 @@
+version: '3.9'
+
+services:
+
+  plex:
+    image: linuxserver/plex
+    container_name: plex
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - VERSION=docker
+    volumes:
+      - ./provision/plex:/config
+      - ./content/media:/data/media
+    ports:
+      - "32400:32400/tcp"
+    restart: unless-stopped
+    # network_mode: host
+    networks:
+      - media-network
+  
+  radarr:
+    image: linuxserver/radarr
+    container_name: radarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Sofia
+    volumes:
+      - ./provision/radarr:/config
+      - ./content:/data
+    ports:
+      - "7878:7878"
+    restart: unless-stopped
+    networks:
+      - media-network
+  
+  sonarr:
+    image: linuxserver/sonarr
+    container_name: sonarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Sofia
+    volumes:
+      - ./provision/sonarr:/config
+      - ./content:/data
+    ports:
+      - "8989:8989"
+    restart: unless-stopped
+    networks:
+      - media-network
+
+  lidarr:
+    image: linuxserver/lidarr
+    container_name: lidarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Sofia
+    volumes:
+      - ./provision/lidarr:/config
+      - ./content:/data
+    ports:
+      - "8686:8686"
+    restart: unless-stopped
+    networks:
+      - media-network
+  
+  prowlarr:
+    image: linuxserver/prowlarr
+    container_name: prowlarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Sofia
+    volumes:
+      - ./provision/prowlarr:/config
+    ports:
+      - 9696:9696
+    restart: unless-stopped
+    networks:
+      - media-network
+
+  bazarr:
+    image: linuxserver/bazarr
+    container_name: bazarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Sofia
+    volumes:
+      - ./provision/bazarr:/config
+      - ./content:/data
+    ports:
+      - "6767:6767"
+    restart: unless-stopped
+    networks:
+      - media-network
+    
+  qbittorrent:
+    image: linuxserver/qbittorrent
+    container_name: qbittorrent
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Sofia
+    volumes:
+      - ./provision/qbittorrent:/config
+      - ./content/torrents:/data/torrents
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    networks:
+      - media-network
+
+  jackett:
+    image: linuxserver/jackett
+    container_name: jackett
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Sofia
+    volumes:
+      - ./provision/jackett:/config
+    ports:
+      - "9117:9117"
+    restart: unless-stopped
+    networks:
+      - media-network
+
+  ombi:
+    image: linuxserver/ombi
+    container_name: ombi
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Sofia
+    volumes:
+      - ./provision/ombi:/config
+    ports:
+      - "3579:3579"
+    restart: unless-stopped
+    networks:
+      - media-network
+
+  heimdall:
+    image: linuxserver/heimdall
+    container_name: heimdall
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Sofia
+    volumes:
+      - ./provision/heimdall:/config
+    ports:
+      - "8083:80"
+      # - "80:80"
+      # - "443:443"
+    restart: unless-stopped
+    networks:
+      - media-network
+    
+networks:
+  media-network:
