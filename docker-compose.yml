@@ -3,22 +3,31 @@ version: '3.9'
 services:
 
   plex:
-    image: linuxserver/plex
+    image: plexinc/pms-docker
     container_name: plex
     environment:
       - PUID=1000
       - PGID=1000
       - VERSION=docker
+      - HOSTNAME=”PlexServer”
     volumes:
       - ./provision/plex:/config
       - ./content/media:/data/media
-    ports:
-      - "32400:32400/tcp"
+    network_mode: host
+    # ports: # when network: bridge
+    #   - "32400:32400/tcp" 
+    #   - "8324:8324/tcp" # Required if network: bridge
+    #   - "32469:32469/tcp" # Required if network: bridge
+    #   - "1900:1900/udp" # Required if network: bridge
+    #   - "32410:32410/udp" # Required if network: bridge
+    #   - "32412:32412/udp" # Required if network: bridge
+    #   - "32413:32413/udp" # Required if network: bridge
+    #   - "32414:32414/udp" # Required if network: bridge
+    privileged: true # libusb_init failed
     restart: unless-stopped
-    # network_mode: host
-    networks:
-      - media-network
-  
+    # networks:
+    #   - media-network
+
   radarr:
     image: linuxserver/radarr
     container_name: radarr
@@ -34,7 +43,7 @@ services:
     restart: unless-stopped
     networks:
       - media-network
-  
+
   sonarr:
     image: linuxserver/sonarr
     container_name: sonarr
@@ -66,7 +75,7 @@ services:
     restart: unless-stopped
     networks:
       - media-network
-  
+
   prowlarr:
     image: linuxserver/prowlarr
     container_name: prowlarr
@@ -97,7 +106,7 @@ services:
     restart: unless-stopped
     networks:
       - media-network
-    
+
   qbittorrent:
     image: linuxserver/qbittorrent
     container_name: qbittorrent
@@ -160,6 +169,6 @@ services:
     restart: unless-stopped
     networks:
       - media-network
-    
+
 networks:
   media-network:
