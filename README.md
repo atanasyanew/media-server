@@ -1,12 +1,14 @@
-# Lets make a media server
+# Automated home media server
 <!-- Home Media Server (Fully Automated) -->
 
 <!-- *Created 2023-01-16* Date started to develop and research-->
-*Modified 2023-01-30*
+<!-- *Modified 2023-02-02* -->
+
+[Read the full article - wiki.ayanev.eu, Automated home media server](https://wiki.ayanev.eu/#/do-it-yourself/2023-01-home-media-server/)
 
 
-
-- [Lets make a media server](#lets-make-a-media-server)
+ToC
+- [Automated home media server](#automated-home-media-server)
   - [The user journey](#the-user-journey)
   - [Architecture](#architecture)
   - [Deployment](#deployment)
@@ -22,7 +24,6 @@
     - [Bazarr](#bazarr)
     - [Ombi](#ombi)
   - [Author notes](#author-notes)
-  - [QnA, Improvments. etc..](#qna-improvments-etc)
   - [Refrances](#refrances)
 
 There are a variety of options for creating a media server.<br>
@@ -55,96 +56,9 @@ And finally, Bazarr service will take care of downloading subtitles.
 
 An architecture point of view
 
-```mermaid
-graph TD;
-
-  Plex[Plex <br> Media Server]
-  Ombi[Ombi <br> Content request app]
-  Heimdall[Heimdall <br> Dashboard UI]
-  
-  subgraph UI[End user applications]
-    Plex
-    Ombi
-    Heimdall
-  end
-
-  subgraph FS[File system OS]
-    Media[Content <br> Media Files]
-  end
-
-  Plex --> Media
-
-  subgraph Automation[Automation]
-
-    subgraph Managers[Content managers]
-      Radarr[Radarr <br> Movie manager]
-      Sonarr[Sonarr <br> TV series manager]
-      Lidarr[Lidarr <br> Music manager]
-    end
-
-    subgraph Indexers[Indexers]
-      Prowlarr[Prowlarr <br> Proxy for indexers <br> Content search]
-      Jackett[Jackett <br> Proxy for indexers <br> <b>Alternative to Prowlarr</b>]
-    end
-
-    qBittorrent[qBittorrent <br> BitTorrent client]
-    Bazarr[Bazarr <br> Subtitle download]
-    Telegram[Telegram <br> Bot API]
-
-    Ombi -->| 1. Content request | Radarr
-    Radarr ---| 2. Search | Prowlarr
-    Radarr -->| 3. Download command | qBittorrent
-    qBittorrent -->| 4. Downloaded | Media
-    Radarr -->| 5. Notify for new content | Bazarr
-    Bazarr -->| 6. Add subtittles | Media
-
-    subgraph Notifications[Notifications]
-      Telegram
-    end
-
-  end
-
-    
-  style Plex fill:#494949,stroke:#f4ba17,stroke-width:3px,color:#f4ba17;
-  style Ombi fill:#1b242f,stroke:#62d2fa,stroke-width:3px,color:#62d2fa;
-  style Radarr fill:#2a2a2a,stroke:#ffc230,stroke-width:3px,color:#ffc230;
-  style Sonarr fill:#3a3f51,stroke:#2193b5,stroke-width:3px,color:#2193b5;
-  style Lidarr fill:#353535,stroke:#00a65b,stroke-width:3px,color:#00a65b;
-  style Jackett fill:#ffffff,stroke:#1b1b1b,stroke-width:3px,color:#1b1b1b;
-  style Prowlarr fill:#f7dfce,stroke:#df5d01,stroke-width:3px,color:#f09e77;
-  style Heimdall fill:#4a5c66,stroke:#d5dbdd,stroke-width:3px,color:#d5dbdd;
-  style qBittorrent fill:#67a7eb,stroke:#c8e8ff,stroke-width:3px,color:#c8e8ff;
-  style Bazarr fill:#717170,stroke:#41b5e6,stroke-width:3px,color:#41b5e6;
-  style Media fill:#c9e6f7,stroke:#73bcf0,stroke-width:3px,color:#ed892d;
-  style Telegram fill:#2fa3d9,stroke:#197eb1,stroke-width:3px,color:#f7f7f7;
-
-  classDef subgraph_generic fill:none,stroke:#c3c3c3,stroke-width:2px;
-  classDef subgraph_generic_dash fill:none,stroke:#c3c3c3,stroke-width:2px,stroke-dasharray:5;
-
-  class UI subgraph_generic
-  class FS subgraph_generic
-  class Automation subgraph_generic
-  class Indexers subgraph_generic_dash
-  class Notifications subgraph_generic_dash
-  class Managers subgraph_generic_dash
-
-```
-
-<!-- 
-```mermaid
-graph TD;
-
-Radarr --- Jackett
-Sonarr --- Jackett
-Lidarr --- Jackett
-
-linkStyle default stroke-width:2px,fill:none,stroke:blue,color:red,stroke-dasharray:5
-
-style Automation fill:none,stroke:#dddddd,stroke-width:3px;
-style FS fill:none,stroke:#dddddd,stroke-width:3px;
-style UI fill:transperant,stroke:#dddddd,stroke-width:3px;
-```
--->
+| Fig.01 - architecture |
+|:---:|
+| ![architecture](architecture.png "architecture") |
 
 <br>
 
@@ -765,21 +679,6 @@ Probably not:
 - [ ] LazyLibrarian 
 - [ ] Mylar
 - [ ] Whisparr, Really?
-
-
-## QnA, Improvments. etc..
-
-
-
-
->How can I import my exsisting movies to ``Radarr``
-
-Place the movie to the folder
-navigate to movies/library import
-and click on the path where movie is placed.
-A list with the movies available for import should appear
-https://wiki.servarr.com/radarr/tips-and-tricks
-
 
 ## Refrances
 
