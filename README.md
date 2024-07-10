@@ -24,7 +24,7 @@ ToC
     - [Bazarr](#bazarr)
     - [Ombi](#ombi)
   - [Author notes](#author-notes)
-  - [Refrances](#refrances)
+  - [References](#references)
 
 There are a variety of options for creating a media server.<br>
 One popular option is to use Plex, which is a free, open-source media server software that can organize and stream your personal media collection.<br>
@@ -680,7 +680,7 @@ Probably not:
 - [ ] Mylar
 - [ ] Whisparr, Really?
 
-## Refrances
+## References
 
 - [Official servarr wiki - docker-guide](https://wiki.servarr.com/docker-guide)
 - [A minimal configuration step-by-step guide to media automation in UnRAID using Radarr, Sonarr, Prowlarr, Jellyfin, Jellyseerr and qBittorrent](https://flemmingss.com/a-minimal-configuration-step-by-step-guide-to-media-automation-in-unraid-using-radarr-sonarr-prowlarr-jellyfin-jellyseerr-and-qbittorrent/)
