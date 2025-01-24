@@ -3,11 +3,11 @@ version: '3.9'
 services:
 
   plex:
-    image: plexinc/pms-docker
+    image: plexinc/pms-docker:latest
     container_name: plex
+    env_file:
+      - .env
     environment:
-      - PUID=1000
-      - PGID=1000
       - VERSION=docker
       - HOSTNAME=”PlexServer”
     volumes:
@@ -15,7 +15,7 @@ services:
       - ./content/media:/data/media
     network_mode: host
     # ports: # when network: bridge
-    #   - "32400:32400/tcp" 
+    #   - "32400:32400/tcp"
     #   - "8324:8324/tcp" # Required if network: bridge
     #   - "32469:32469/tcp" # Required if network: bridge
     #   - "1900:1900/udp" # Required if network: bridge
@@ -29,12 +29,10 @@ services:
     #   - media-network
 
   radarr:
-    image: linuxserver/radarr
+    image: linuxserver/radarr:latest
     container_name: radarr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - .env
     volumes:
       - ./provision/radarr:/config
       - ./content:/data
@@ -45,12 +43,10 @@ services:
       - media-network
 
   sonarr:
-    image: linuxserver/sonarr
+    image: linuxserver/sonarr:latest
     container_name: sonarr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - .env
     volumes:
       - ./provision/sonarr:/config
       - ./content:/data
@@ -61,12 +57,10 @@ services:
       - media-network
 
   lidarr:
-    image: linuxserver/lidarr
+    image: linuxserver/lidarr:latest
     container_name: lidarr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - .env
     volumes:
       - ./provision/lidarr:/config
       - ./content:/data
@@ -77,12 +71,10 @@ services:
       - media-network
 
   prowlarr:
-    image: linuxserver/prowlarr
+    image: linuxserver/prowlarr:latest
     container_name: prowlarr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - .env
     volumes:
       - ./provision/prowlarr:/config
     ports:
@@ -92,12 +84,10 @@ services:
       - media-network
 
   bazarr:
-    image: linuxserver/bazarr
+    image: linuxserver/bazarr:latest
     container_name: bazarr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - .env
     volumes:
       - ./provision/bazarr:/config
       - ./content:/data
@@ -108,12 +98,10 @@ services:
       - media-network
 
   qbittorrent:
-    image: linuxserver/qbittorrent
+    image: linuxserver/qbittorrent:latest
     container_name: qbittorrent
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - .env
     volumes:
       - ./provision/qbittorrent:/config
       - ./content/torrents:/data/torrents
@@ -124,12 +112,10 @@ services:
       - media-network
 
   jackett:
-    image: linuxserver/jackett
+    image: linuxserver/jackett:latest
     container_name: jackett
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - .env
     volumes:
       - ./provision/jackett:/config
     ports:
@@ -139,12 +125,10 @@ services:
       - media-network
 
   ombi:
-    image: linuxserver/ombi
+    image: linuxserver/ombi:latest
     container_name: ombi
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - .env
     volumes:
       - ./provision/ombi:/config
     ports:
@@ -154,18 +138,52 @@ services:
       - media-network
 
   heimdall:
-    image: linuxserver/heimdall
+    image: linuxserver/heimdall:latest
     container_name: heimdall
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - .env
     volumes:
       - ./provision/heimdall:/config
     ports:
       - "80:80"
       - "443:443"
       # - "8083:80"
+    restart: unless-stopped
+    networks:
+      - media-network
+
+  overseerr:
+    image: lscr.io/linuxserver/overseerr:latest
+    container_name: overseerr
+    env_file:
+      - .env
+    volumes:
+      - ./provision/overseerr:/config
+    ports:
+      - "5055:5055"
+    restart: unless-stopped
+    networks:
+      - media-network
+
+  flareSolverr:
+    image: linuxserver/flaresolverr:latest
+    container_name: flareSolverr
+    env_file:
+      - .env
+    volumes:
+      - ./provision/flaresolverr:/config
+    ports:
+      - "8191:8191"
+    restart: unless-stopped
+    networks:
+      - media-network
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --cleanup
     restart: unless-stopped
     networks:
       - media-network
