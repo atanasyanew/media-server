@@ -108,17 +108,17 @@ Before continuing, be aware of your local laws regarding torrent usage and copyr
 - Click on ``Add an application here`` and search for the application, for example ``Plex``
 - Add the rest of the services from ``Application list`` then ``Add``, here is a table for all the applications
 
-  | Title | URL |
-  |:|:-|
-  | Plex        | ``http://<host>:32400/web`` |
-  | qBittorrent | ``http://<host>:8080`` |
-  | Radarr      | ``http://<host>:7878`` |
-  | Sonarr      | ``http://<host>:8989`` |
-  | Lidarr      | ``http://<host>:8686`` |
-  | Prowlarr    | ``http://<host>:9696`` |
-  | Jackett     | ``http://<host>:9117`` |
-  | Bazarr      | ``http://<host>:6767`` |
-  | Ombi        | ``http://<host>:3579`` |
+| Title        | URL                        |
+|--------------|----------------------------|
+| Plex         | `http://<host>:32400/web`  |
+| qBittorrent  | `http://<host>:8080`       |
+| Radarr       | `http://<host>:7878`       |
+| Sonarr       | `http://<host>:8989`       |
+| Lidarr       | `http://<host>:8686`       |
+| Prowlarr     | `http://<host>:9696`       |
+| Jackett      | `http://<host>:9117`       |
+| Bazarr       | `http://<host>:6767`       |
+| Ombi         | `http://<host>:3579`       |
 
 - Last, you may want to change home page background from settings menu
 
