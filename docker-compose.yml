@@ -5,20 +5,20 @@ services:
   plex:
     image: plexinc/pms-docker
     container_name: plex
+    env_file:
+      - ./provision/.env.defaults
     environment:
-      - PUID=1000
-      - PGID=1000
       - VERSION=docker
-      - HOSTNAME=”PlexServer”
+      - HOSTNAME="PlexServer"
     volumes:
       - ./provision/plex:/config
       - ./content/media:/data/media
     network_mode: host
     # ports: # when network: bridge
     #   - "32400:32400/tcp" 
-    #   - "8324:8324/tcp" # Required if network: bridge
+    #   - "8324:8324/tcp"   # Required if network: bridge
     #   - "32469:32469/tcp" # Required if network: bridge
-    #   - "1900:1900/udp" # Required if network: bridge
+    #   - "1900:1900/udp"   # Required if network: bridge
     #   - "32410:32410/udp" # Required if network: bridge
     #   - "32412:32412/udp" # Required if network: bridge
     #   - "32413:32413/udp" # Required if network: bridge
@@ -31,10 +31,8 @@ services:
   radarr:
     image: linuxserver/radarr
     container_name: radarr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - ./provision/.env.defaults
     volumes:
       - ./provision/radarr:/config
       - ./content:/data
@@ -47,10 +45,8 @@ services:
   sonarr:
     image: linuxserver/sonarr
     container_name: sonarr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - ./provision/.env.defaults
     volumes:
       - ./provision/sonarr:/config
       - ./content:/data
@@ -63,10 +59,8 @@ services:
   lidarr:
     image: linuxserver/lidarr
     container_name: lidarr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - ./provision/.env.defaults
     volumes:
       - ./provision/lidarr:/config
       - ./content:/data
@@ -79,10 +73,8 @@ services:
   prowlarr:
     image: linuxserver/prowlarr
     container_name: prowlarr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - ./provision/.env.defaults
     volumes:
       - ./provision/prowlarr:/config
     ports:
@@ -94,10 +86,8 @@ services:
   bazarr:
     image: linuxserver/bazarr
     container_name: bazarr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - ./provision/.env.defaults
     volumes:
       - ./provision/bazarr:/config
       - ./content:/data
@@ -110,13 +100,12 @@ services:
   qbittorrent:
     image: linuxserver/qbittorrent
     container_name: qbittorrent
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - ./provision/.env.defaults
     volumes:
       - ./provision/qbittorrent:/config
       - ./content/torrents:/data/torrents
+      - ./content/media:/data/media
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -126,10 +115,8 @@ services:
   jackett:
     image: linuxserver/jackett
     container_name: jackett
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - ./provision/.env.defaults
     volumes:
       - ./provision/jackett:/config
     ports:
@@ -141,10 +128,8 @@ services:
   ombi:
     image: linuxserver/ombi
     container_name: ombi
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - ./provision/.env.defaults
     volumes:
       - ./provision/ombi:/config
     ports:
@@ -156,16 +141,59 @@ services:
   heimdall:
     image: linuxserver/heimdall
     container_name: heimdall
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Sofia
+    env_file:
+      - ./provision/.env.defaults
     volumes:
       - ./provision/heimdall:/config
     ports:
       - "80:80"
       - "443:443"
       # - "8083:80"
+    restart: unless-stopped
+    networks:
+      - media-network
+
+  overseerr:
+    image: lscr.io/linuxserver/overseerr
+    container_name: overseerr
+    env_file:
+      - ./provision/.env.defaults
+    volumes:
+      - ./provision/overseerr:/config
+    ports:
+      - "5055:5055"
+    restart: unless-stopped
+    networks:
+      - media-network
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr
+    container_name: flaresolverr
+    env_file:
+      - ./provision/.env.defaults
+    volumes:
+      - ./provision/flaresolverr:/config
+    ports:
+      - "8191:8191"
+    restart: unless-stopped
+    networks:
+      - media-network
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    env_file:
+      - ./provision/.env.defaults
+      - ./provision/.env.secrets
+    environment:
+      - WATCHTOWER_CLEANUP=true        # Remove old images after update
+      - WATCHTOWER_POLL_INTERVAL=86400 # Check every 24h (in seconds)
+      # - WATCHTOWER_NOTIFICATION_TELEGRAM_TOKEN=${TELEGRAM_TOKEN} # cherry-pick from .env.secret
+      # - WATCHTOWER_NOTIFICATION_TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      # - WATCHTOWER_INCLUDE_STOPPED=true # Optional: update stopped containers
+      # - WATCHTOWER_LABEL_ENABLE=true    # Optional: only update containers with "com.centurylinklabs.watchtower.enable=true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
     networks:
       - media-network
