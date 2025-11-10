@@ -5,6 +5,7 @@
 dirs=(
   "content/media/movies favorite"
   "content/media/movies"
+  "content/media/kids"
   "content/media/music"
   "content/media/tv"
   "content/torrents/movies"

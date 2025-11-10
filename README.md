@@ -64,6 +64,7 @@ The project use the following folder structure: ``content`` and ``provision`` in
 │   ├───media
 │   │   ├───movies
 │   │   ├───movies favorite
+│   │   ├───kids
 │   │   ├───music
 │   │   └───tv
 │   │
@@ -244,6 +245,9 @@ Radarr Web UI by navigating to ``http://<host>:7878`` in your browser.
       - ``/data/media/movies/``
       - ``/data/media/movies favorite/`` (Optional)
         Have a such folder where all my favorite movies to be in, so if i need to clean up space to inspect only the folder with the movies not in the favorites.
+      - ``/data/media/kids/`` (Optional)
+        Dedicated library for child-friendly titles so Radarr can keep ratings filters and restrictions isolated.
+
 5. Notifications (Optional)
    Using Telegram, same as configuration described in Prowlarr
 6. Analytics (Optional)
