@@ -179,24 +179,24 @@ services:
     networks:
       - media-network
 
-  watchtower:
-    image: containrrr/watchtower
-    container_name: watchtower
-    env_file:
-      - ./provision/.env.defaults
-      - ./provision/.env.secrets
-    environment:
-      - WATCHTOWER_CLEANUP=true        # Remove old images after update
-      - WATCHTOWER_POLL_INTERVAL=86400 # Check every 24h (in seconds)
-      # - WATCHTOWER_NOTIFICATION_TELEGRAM_TOKEN=${TELEGRAM_TOKEN} # cherry-pick from .env.secret
-      # - WATCHTOWER_NOTIFICATION_TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
-      # - WATCHTOWER_INCLUDE_STOPPED=true # Optional: update stopped containers
-      # - WATCHTOWER_LABEL_ENABLE=true    # Optional: only update containers with "com.centurylinklabs.watchtower.enable=true"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    restart: unless-stopped
-    networks:
-      - media-network
+#  watchtower:
+#   image: containrrr/watchtower
+#    container_name: watchtower
+#    env_file:
+#      - ./provision/.env.defaults
+#      - ./provision/.env.secrets
+#    environment:
+#      - WATCHTOWER_CLEANUP=true        # Remove old images after update
+#      - WATCHTOWER_POLL_INTERVAL=86400 # Check every 24h (in seconds)
+#      # - WATCHTOWER_NOTIFICATION_TELEGRAM_TOKEN=${TELEGRAM_TOKEN} # cherry-pick from .env.secret
+#      # - WATCHTOWER_NOTIFICATION_TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+#      # - WATCHTOWER_INCLUDE_STOPPED=true # Optional: update stopped containers
+#      # - WATCHTOWER_LABEL_ENABLE=true    # Optional: only update containers with "com.centurylinklabs.watchtower.enable=true"
+#    volumes:
+#      - /var/run/docker.sock:/var/run/docker.sock
+#    restart: unless-stopped
+#    networks:
+#      - media-network
 
 networks:
   media-network:
