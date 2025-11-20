@@ -166,6 +166,19 @@ services:
     networks:
       - media-network
 
+  suggestarr:
+    image: ciuse99/suggestarr
+    container_name: suggestarr
+    env_file:
+      - ./provision/.env.defaults
+    volumes:
+      - ./provision/suggestarr:/app/config/config_files
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    networks:
+      - media-network
+
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr
     container_name: flaresolverr

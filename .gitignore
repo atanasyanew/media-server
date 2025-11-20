@@ -16,6 +16,7 @@ provision/plex/*
 provision/overseerr/*
 provision/flaresolverr/*
 provision/huntarr/*
+provision/suggestarr/*
 
 provision/.env.*
 

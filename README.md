@@ -23,6 +23,7 @@ This is a fully automated home media server setup using Docker Compose. It pulls
   - [Lidarr](#lidarr)
   - [Bazarr](#bazarr)
   - [Huntarr](#huntarr)
+  - [Suggestarr](#suggestarr)
   - [Ombi](#ombi)
 - [References](#references)
 
@@ -50,6 +51,7 @@ Each component in this stack has one job:
 - **Jackett/Prowlarr**: Connects Radarr/Sonarr/Lidarr to torrent indexers.
 - **Bazarr**: Automatically downloads subtitles.
 - **Huntarr**: Loops through your libraries to find missing items and trigger quality upgrades.
+- **Suggestarr**: Lightweight suggestion UI that lets users browse and queue titles into your Arr apps.
 - **Ombi/Overserr**: Frontend for users to request content.
 - **Heimdall**: Centralized dashboard.
 
@@ -122,6 +124,7 @@ Before continuing, be aware of your local laws regarding torrent usage and copyr
 | Jackett      | `http://<host>:9117`       |
 | Bazarr       | `http://<host>:6767`       |
 | Huntarr      | `http://<host>:9705`       |
+| Suggestarr   | `http://<host>:5000`       |
 | Ombi         | `http://<host>:3579`       |
 
 - Last, you may want to change home page background from settings menu
@@ -347,6 +350,14 @@ Huntarr continually scans your Radarr/Sonarr/Lidarr libraries and triggers searc
 
 - Web UI: ``http://<host>:9705``
 - First launch: create an admin account, then add your Arr apps using container hostnames (``http://sonarr:8989``, ``http://radarr:7878``, ``http://lidarr:8686``) plus their API keys.
+
+### Suggestarr
+
+Suggestarr provides a small web UI for browsing titles and forwarding picks to your Arr apps.
+
+- Web UI: ``http://<host>:5000``.
+- Configure Radarr/Sonarr endpoints from the settings page using container hostnames (``http://radarr:7878``, ``http://sonarr:8989``) and their API keys so requests post back into the stack.
+
 
 ### Ombi
 
