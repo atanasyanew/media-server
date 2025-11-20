@@ -179,6 +179,19 @@ services:
     networks:
       - media-network
 
+  huntarr:
+    image: ghcr.io/plexguide/huntarr:latest
+    container_name: huntarr
+    env_file:
+      - ./provision/.env.defaults
+    volumes:
+      - ./provision/huntarr:/config
+    ports:
+      - "9705:9705"
+    restart: unless-stopped
+    networks:
+      - media-network
+
 #  watchtower:
 #   image: containrrr/watchtower
 #    container_name: watchtower

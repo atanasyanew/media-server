@@ -22,6 +22,7 @@ This is a fully automated home media server setup using Docker Compose. It pulls
   - [Sonarr](#sonarr)
   - [Lidarr](#lidarr)
   - [Bazarr](#bazarr)
+  - [Huntarr](#huntarr)
   - [Ombi](#ombi)
 - [References](#references)
 
@@ -48,6 +49,7 @@ Each component in this stack has one job:
 - **qBittorrent**: The download engine.
 - **Jackett/Prowlarr**: Connects Radarr/Sonarr/Lidarr to torrent indexers.
 - **Bazarr**: Automatically downloads subtitles.
+- **Huntarr**: Loops through your libraries to find missing items and trigger quality upgrades.
 - **Ombi/Overserr**: Frontend for users to request content.
 - **Heimdall**: Centralized dashboard.
 
@@ -119,6 +121,7 @@ Before continuing, be aware of your local laws regarding torrent usage and copyr
 | Prowlarr     | `http://<host>:9696`       |
 | Jackett      | `http://<host>:9117`       |
 | Bazarr       | `http://<host>:6767`       |
+| Huntarr      | `http://<host>:9705`       |
 | Ombi         | `http://<host>:3579`       |
 
 - Last, you may want to change home page background from settings menu
@@ -337,6 +340,13 @@ You can also refer to the official documentation of Bazarr for more information 
 - [wiki.bazarr.media/Getting-Started/Setup-Guide/](https://wiki.bazarr.media/Getting-Started/Setup-Guide/)
 - [wiki.bazarr.media/Additional-Configuration/](https://wiki.bazarr.media/Additional-Configuration/Settings/)
 - [wiki.bazarr.media/Troubleshooting/FAQ](https://wiki.bazarr.media/Troubleshooting/FAQ/#what-are-forced-subtitles)
+
+### Huntarr
+
+Huntarr continually scans your Radarr/Sonarr/Lidarr libraries and triggers searches for missing items or quality upgrades so the stack keeps improving even when RSS is quiet.
+
+- Web UI: ``http://<host>:9705``
+- First launch: create an admin account, then add your Arr apps using container hostnames (``http://sonarr:8989``, ``http://radarr:7878``, ``http://lidarr:8686``) plus their API keys.
 
 ### Ombi
 
