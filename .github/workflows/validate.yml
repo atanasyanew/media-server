@@ -29,9 +29,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --no-save playwright@1.56.1
-      - run: npx playwright install --with-deps chromium
+      - run: npm install --no-save playwright@1.62.1
       - run: node tests/browser-smoke.cjs
+        env:
+          BROWSER_CHANNEL: chrome
       - uses: actions/upload-artifact@v4
         if: always()
         with:

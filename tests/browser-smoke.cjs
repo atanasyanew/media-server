@@ -14,7 +14,7 @@ const assert = require('node:assert/strict');
       if (attempt === 99) throw Error('Browser fixture did not start');
       await new Promise(resolve => setTimeout(resolve, 100));
     }
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ headless: true, ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}) });
     const page = await browser.newPage({ viewport: { width: 1200, height: 1000 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
