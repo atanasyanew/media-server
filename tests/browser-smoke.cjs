@@ -36,6 +36,7 @@ const assert = require('node:assert/strict');
     await page.getByRole('heading', { name: 'Across the mountains (2024)' }).waitFor();
     assert.equal(await page.inputValue('#audio'), 'ja');
     await page.setViewportSize({ width: 390, height: 844 });
+    assert.ok((await page.locator('#search').boundingBox()).width > 180, 'Mobile search field must remain usable');
     await page.screenshot({ path: 'browser-mobile.png', fullPage: true });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     assert.deepEqual(errors, []);
