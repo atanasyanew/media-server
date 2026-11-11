@@ -4,7 +4,7 @@ permissions:
   contents: read
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -19,6 +19,13 @@ jobs:
       - run: docker compose run --rm --no-deps authelia authelia config validate --config /config/configuration.yml
       - run: docker compose run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
       - run: docker compose build portal
+      - name: Verify unauthenticated requests cannot forge a login
+        run: |
+          docker compose up -d --wait redis authelia portal caddy
+          docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./ci-root.crt
+          status=$(curl --silent --show-error --fail --retry 10 --retry-connrefused --retry-delay 1 --max-time 10 --resolve media.home.arpa:443:127.0.0.1 --cacert ci-root.crt --header 'Remote-User: forged' --dump-header ci-auth-headers --output ci-auth-body --write-out '%{http_code}' https://media.home.arpa/)
+          test "$status" = 302
+          grep -qi '^location: https://auth.media.home.arpa' ci-auth-headers
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -31,3 +38,5 @@ jobs:
           name: browser-previews
           path: browser-*.png
           if-no-files-found: ignore
+      - run: docker compose down
+        if: always()
