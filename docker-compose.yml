@@ -1,228 +1,436 @@
-version: '3.9'
-
+# Requires Docker Compose v2.20+; run scripts/setup.py before starting.
 services:
-
   plex:
     image: plexinc/pms-docker
     container_name: plex
     env_file:
-      - ./provision/.env.defaults
+    - ./provision/.env.defaults
     environment:
-      - VERSION=docker
-      - HOSTNAME="PlexServer"
+      TZ: ${TZ:-Europe/Luxembourg}
+      PLEX_CLAIM: ${PLEX_CLAIM:-}
+      HOSTNAME: PlexServer
+      ADVERTISE_IP: http://${PLEX_BIND_IP:-127.0.0.1}:32400/
+      PLEX_UID: ${PUID:-1000}
+      PLEX_GID: ${PGID:-1000}
     volumes:
-      - ./provision/plex:/config
-      - ./content/media:/data/media
-    network_mode: host
-    # ports: # when network: bridge
-    #   - "32400:32400/tcp" 
-    #   - "8324:8324/tcp"   # Required if network: bridge
-    #   - "32469:32469/tcp" # Required if network: bridge
-    #   - "1900:1900/udp"   # Required if network: bridge
-    #   - "32410:32410/udp" # Required if network: bridge
-    #   - "32412:32412/udp" # Required if network: bridge
-    #   - "32413:32413/udp" # Required if network: bridge
-    #   - "32414:32414/udp" # Required if network: bridge
-    privileged: true # libusb_init failed
+    - ./provision/plex:/config
+    - ./content/media:/data/media
     restart: unless-stopped
-    # networks:
-    #   - media-network
-
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    ports:
+    - ${PLEX_BIND_IP:-127.0.0.1}:32400:32400
+    networks:
+    - media-network
   radarr:
-    image: linuxserver/radarr
+    image: lscr.io/linuxserver/radarr:6.4.4.10685-ls326
     container_name: radarr
     env_file:
-      - ./provision/.env.defaults
+    - ./provision/.env.defaults
     volumes:
-      - ./provision/radarr:/config
-      - ./content:/data
+    - ./provision/radarr:/config
+    - ./content:/data
     ports:
-      - "7878:7878"
+    - 127.0.0.1:7878:7878
     restart: unless-stopped
     networks:
-      - media-network
-
+    - media-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Luxembourg}
   sonarr:
-    image: linuxserver/sonarr
+    image: lscr.io/linuxserver/sonarr:4.0.20.3014-ls4
     container_name: sonarr
     env_file:
-      - ./provision/.env.defaults
+    - ./provision/.env.defaults
     volumes:
-      - ./provision/sonarr:/config
-      - ./content:/data
+    - ./provision/sonarr:/config
+    - ./content:/data
     ports:
-      - "8989:8989"
+    - 127.0.0.1:8989:8989
     restart: unless-stopped
     networks:
-      - media-network
-
+    - media-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Luxembourg}
   lidarr:
     image: linuxserver/lidarr
     container_name: lidarr
     env_file:
-      - ./provision/.env.defaults
+    - ./provision/.env.defaults
     volumes:
-      - ./provision/lidarr:/config
-      - ./content:/data
+    - ./provision/lidarr:/config
+    - ./content:/data
     ports:
-      - "8686:8686"
+    - 127.0.0.1:8686:8686
     restart: unless-stopped
     networks:
-      - media-network
-
+    - media-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Luxembourg}
+    profiles:
+    - extras
   prowlarr:
     image: linuxserver/prowlarr
     container_name: prowlarr
     env_file:
-      - ./provision/.env.defaults
+    - ./provision/.env.defaults
     volumes:
-      - ./provision/prowlarr:/config
+    - ./provision/prowlarr:/config
     ports:
-      - 9696:9696
+    - 127.0.0.1:9696:9696
     restart: unless-stopped
     networks:
-      - media-network
-
+    - media-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Luxembourg}
   bazarr:
     image: linuxserver/bazarr
     container_name: bazarr
     env_file:
-      - ./provision/.env.defaults
+    - ./provision/.env.defaults
     volumes:
-      - ./provision/bazarr:/config
-      - ./content:/data
+    - ./provision/bazarr:/config
+    - ./content:/data
     ports:
-      - "6767:6767"
+    - 127.0.0.1:6767:6767
     restart: unless-stopped
     networks:
-      - media-network
-
+    - media-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Luxembourg}
   qbittorrent:
-    image: linuxserver/qbittorrent
+    image: lscr.io/linuxserver/qbittorrent:5.3.0_v2.1.2-ls487
     container_name: qbittorrent
     env_file:
-      - ./provision/.env.defaults
+    - ./provision/.env.defaults
     volumes:
-      - ./provision/qbittorrent:/config
-      - ./content/torrents:/data/torrents
-      - ./content/media:/data/media
-    ports:
-      - "8080:8080"
+    - ./provision/qbittorrent:/config
+    - ./content:/data
     restart: unless-stopped
-    networks:
-      - media-network
-
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Luxembourg}
+    network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_healthy
+        restart: true
   jackett:
     image: linuxserver/jackett
     container_name: jackett
     env_file:
-      - ./provision/.env.defaults
+    - ./provision/.env.defaults
     volumes:
-      - ./provision/jackett:/config
+    - ./provision/jackett:/config
     ports:
-      - "9117:9117"
+    - 127.0.0.1:9117:9117
     restart: unless-stopped
     networks:
-      - media-network
-
+    - media-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Luxembourg}
+    profiles:
+    - extras
   ombi:
     image: linuxserver/ombi
     container_name: ombi
     env_file:
-      - ./provision/.env.defaults
+    - ./provision/.env.defaults
     volumes:
-      - ./provision/ombi:/config
+    - ./provision/ombi:/config
     ports:
-      - "3579:3579"
+    - 127.0.0.1:3579:3579
     restart: unless-stopped
     networks:
-      - media-network
-
+    - media-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Luxembourg}
+    profiles:
+    - extras
   heimdall:
     image: linuxserver/heimdall
     container_name: heimdall
     env_file:
-      - ./provision/.env.defaults
+    - ./provision/.env.defaults
     volumes:
-      - ./provision/heimdall:/config
+    - ./provision/heimdall:/config
     ports:
-      - "80:80"
-      - "443:443"
-      # - "8083:80"
+    - 127.0.0.1:8083:80
     restart: unless-stopped
     networks:
-      - media-network
-
+    - media-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Luxembourg}
+    profiles:
+    - extras
   overseerr:
     image: lscr.io/linuxserver/overseerr
     container_name: overseerr
     env_file:
-      - ./provision/.env.defaults
+    - ./provision/.env.defaults
     volumes:
-      - ./provision/overseerr:/config
+    - ./provision/overseerr:/config
     ports:
-      - "5055:5055"
+    - 127.0.0.1:5055:5055
     restart: unless-stopped
     networks:
-      - media-network
-
+    - media-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Luxembourg}
   suggestarr:
     image: ciuse99/suggestarr
     container_name: suggestarr
     env_file:
-      - ./provision/.env.defaults
+    - ./provision/.env.defaults
     volumes:
-      - ./provision/suggestarr:/app/config/config_files
+    - ./provision/suggestarr:/app/config/config_files
     ports:
-      - "5000:5000"
+    - 127.0.0.1:5000:5000
     restart: unless-stopped
     networks:
-      - media-network
-
+    - media-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Luxembourg}
+    profiles:
+    - extras
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr
     container_name: flaresolverr
     env_file:
-      - ./provision/.env.defaults
+    - ./provision/.env.defaults
     volumes:
-      - ./provision/flaresolverr:/config
+    - ./provision/flaresolverr:/config
     ports:
-      - "8191:8191"
+    - 127.0.0.1:8191:8191
     restart: unless-stopped
     networks:
-      - media-network
-
+    - media-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Luxembourg}
+    profiles:
+    - extras
   huntarr:
     image: ghcr.io/plexguide/huntarr:latest
     container_name: huntarr
     env_file:
-      - ./provision/.env.defaults
+    - ./provision/.env.defaults
     volumes:
-      - ./provision/huntarr:/config
+    - ./provision/huntarr:/config
     ports:
-      - "9705:9705"
+    - 127.0.0.1:9705:9705
     restart: unless-stopped
     networks:
-      - media-network
-
-#  watchtower:
-#   image: containrrr/watchtower
-#    container_name: watchtower
-#    env_file:
-#      - ./provision/.env.defaults
-#      - ./provision/.env.secrets
-#    environment:
-#      - WATCHTOWER_CLEANUP=true        # Remove old images after update
-#      - WATCHTOWER_POLL_INTERVAL=86400 # Check every 24h (in seconds)
-#      # - WATCHTOWER_NOTIFICATION_TELEGRAM_TOKEN=${TELEGRAM_TOKEN} # cherry-pick from .env.secret
-#      # - WATCHTOWER_NOTIFICATION_TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
-#      # - WATCHTOWER_INCLUDE_STOPPED=true # Optional: update stopped containers
-#      # - WATCHTOWER_LABEL_ENABLE=true    # Optional: only update containers with "com.centurylinklabs.watchtower.enable=true"
-#    volumes:
-#      - /var/run/docker.sock:/var/run/docker.sock
-#    restart: unless-stopped
-#    networks:
-#      - media-network
-
+    - media-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Luxembourg}
+    profiles:
+    - extras
+  gluetun:
+    image: qmcgaw/gluetun:v3.40.0
+    cap_add:
+    - NET_ADMIN
+    devices:
+    - /dev/net/tun:/dev/net/tun
+    environment:
+      VPN_SERVICE_PROVIDER: surfshark
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_PRIVATE_KEY:?Set Surfshark WireGuard private
+        key in .env}
+      WIREGUARD_ADDRESSES: ${WIREGUARD_ADDRESSES:?Set Surfshark WireGuard address
+        in .env}
+      SERVER_COUNTRIES: ${VPN_COUNTRIES:-Netherlands}
+      FIREWALL: 'on'
+      FIREWALL_INPUT_PORTS: '8080'
+      TZ: ${TZ:-Europe/Luxembourg}
+    volumes:
+    - ./provision/gluetun:/gluetun
+    ports:
+    - 127.0.0.1:8080:8080
+    restart: unless-stopped
+    networks:
+    - media-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  portal:
+    build:
+      context: .
+      dockerfile: portal/Dockerfile
+    environment:
+      MEDIA_DOMAIN: ${MEDIA_DOMAIN:?Set MEDIA_DOMAIN}
+      PLEX_URL: http://plex:32400
+      PLEX_TOKEN: ${PLEX_TOKEN:-}
+      PORTAL_ORIGIN: https://${MEDIA_DOMAIN}
+    read_only: true
+    tmpfs:
+    - /tmp
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    restart: unless-stopped
+    networks:
+    - media-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  caddy:
+    image: caddy:2.11.9-alpine
+    ports:
+    - 80:80
+    - 443:443
+    environment:
+      MEDIA_DOMAIN: ${MEDIA_DOMAIN:?Set MEDIA_DOMAIN}
+    volumes:
+    - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+    - ./provision/caddy/data:/data
+    - ./provision/caddy/config:/config
+    depends_on:
+    - authelia
+    - portal
+    restart: unless-stopped
+    networks:
+    - media-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  authelia:
+    image: authelia/authelia:4.39.28
+    volumes:
+    - ./provision/authelia:/config
+    environment:
+      AUTHELIA_SESSION_SECRET_FILE: /config/session.secret
+      AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: /config/storage.secret
+      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: /config/jwt.secret
+    depends_on:
+    - redis
+    restart: unless-stopped
+    networks:
+    - media-network
+    - auth-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  redis:
+    image: redis:7.4-alpine
+    command:
+    - redis-server
+    - --appendonly
+    - 'yes'
+    - --appendfsync
+    - everysec
+    volumes:
+    - ./provision/redis:/data
+    restart: unless-stopped
+    networks:
+    - auth-network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 networks:
-  media-network:
+  media-network: null
+  auth-network:
+    internal: true

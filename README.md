@@ -1,389 +1,239 @@
-# Automated Home Media Server
+# Home media server with language choices
 
-This is a fully automated home media server setup using Docker Compose. It pulls content, organizes it, adds subtitles, and makes everything available through Plex with minimal manual input. The whole system can be controlled via a user-friendly web dashboard.
+Plex playback, Sonarr/Radarr media management, Prowlarr sources, Bazarr subtitles,
+and qBittorrent routed through Surfshark. A new language page shows whether your
+files contain German, English, or Japanese audio and your chosen subtitles.
+Caddy and Authelia protect the browser apps with HTTPS and a 30-day Remember Me
+session. Redis persists sessions through container restarts.
 
-<!-- *Created 2023-01-16* Date started to develop and research-->
-<!-- *Modified 2025-08-07* -->
+## What language selection does
 
-[Read the full article - wiki.ayanev.eu, Automated home media server](https://wiki.ayanev.eu/#/do-it-yourself/2023-01-home-media-server/)
+1. Open the media homepage and choose **German**, **English**, or **Japanese**.
+2. Choose subtitles: English, German, Japanese, or Off. Japanese requires subtitles.
+3. Pick a library and search for a movie or episode. Choose **Check languages**.
+4. If a file version contains the requested tracks, choose **Use these tracks**,
+   then **Open in Plex**. Select the matching version if Plex asks.
 
-## Table of Contents
+The page checks actual Plex stream metadata for every part of a file version.
+It never combines audio from one version with subtitles from another. Full
+subtitles are required; a forced-only track does not satisfy the subtitle choice.
+Commentary and audio-description tracks do not count as a dub.
 
-- [User Flow](#user-flow)
-- [System Architecture](#system-architecture)
-- [Deployment](#deployment)
-- [Service Configuration](#service-configuration)
-  - [Plex](#plex)
-  - [Heimdall](#heimdall)
-  - [qBittorrent](#qbittorrent)
-  - [Prowlarr](#prowlarr)
-  - [Jackett](#jackett)
-  - [Radarr](#radarr)
-  - [Sonarr](#sonarr)
-  - [Lidarr](#lidarr)
-  - [Bazarr](#bazarr)
-  - [Huntarr](#huntarr)
-  - [Suggestarr](#suggestarr)
-  - [Ombi](#ombi)
-- [References](#references)
+- **Available in your library:** the requested audio and subtitles were found.
+- **German/English/Japanese audio is not available in your library:** no matching
+  tagged audio track was found. No fallback is selected.
+- **Subtitles are not available with this audio:** the audio exists, but the
+  requested full subtitles are missing from that version.
+- **Availability unknown:** audio or requested subtitles are untagged/unanalysed.
+  If Plex cannot be reached, a connection error is shown separately and is never
+  presented as a missing dub.
 
-## User Flow
+This cannot prove that an edition does not exist anywhere. It checks your own
+library, not every streaming service or release source. It does not generate dubs,
+translate audio, download missing tracks, or splice separately acquired audio.
+Bazarr can fetch subtitles once you configure its providers.
 
-1. A user requests a movie, show, or album via Ombi.
-2. Ombi passes that request to Radarr (for movies), Sonarr (for shows), or Lidarr (for music).
-3. These apps search indexers (through Prowlarr or Jackett) and send the torrent to qBittorrent.
-4. qBittorrent downloads it. Once complete, the files are moved to the correct media folder.
-5. Plex scans the folder and updates the library.
-6. Bazarr fetches subtitles and stores them with the media files.
-7. The user streams the content via Plex.
+**Plex remains the player.** The portal is for one connected Plex account. Saved
+track selections apply to the account owning `PLEX_TOKEN`; use that same account
+in Plex. Your browser remembers your language choice. Native Plex/TV apps retain
+their own login and can override selections. During playback, the Plex player's
+Audio & Subtitles controls also let you switch between existing tracks.
 
-## System Architecture
+## First installation
 
-![architecture](architecture.png "architecture")
+Requires Linux Docker Engine, the Compose plugin **v2.20+**, Python 3, a Surfshark
+subscription, and your own media/sources. Do this on the machine hosting the
+server. No VPN credentials or Plex tokens belong in GitHub or in chat.
 
-Each component in this stack has one job:
+### 1. Configure the server address and VPN
 
-- **Plex**: Media player and server.
-- **Radarr**: Finds, downloads, and manages movies.
-- **Sonarr**: Same as Radarr, but for TV.
-- **Lidarr**: Same, but for music.
-- **qBittorrent**: The download engine.
-- **Jackett/Prowlarr**: Connects Radarr/Sonarr/Lidarr to torrent indexers.
-- **Bazarr**: Automatically downloads subtitles.
-- **Huntarr**: Loops through your libraries to find missing items and trigger quality upgrades.
-- **Suggestarr**: Lightweight suggestion UI that lets users browse and queue titles into your Arr apps.
-- **Ombi/Overserr**: Frontend for users to request content.
-- **Heimdall**: Centralized dashboard.
-
-## Deployment
-
-The project use the following folder structure: ``content`` and ``provision`` in the same directory as the compose file, this folder will be used to store your media files and persist service configurations.
-
-```bash
-.
-│   docker-compose.yml
-│   README.md
-│
-├───content
-│   ├───media
-│   │   ├───movies
-│   │   ├───movies favorite
-│   │   ├───kids
-│   │   ├───music
-│   │   └───tv
-│   │
-│   ├───torrents
-│   │   ├───movies
-│   │   └───tv
-│   └───usenet
-│       ├───movies
-│       ├───music
-│       └───tv
-│
-└───provision
+```sh
+cp .env.example .env
 ```
 
-Run `docker-compose up -d`.
+Edit `.env` locally:
 
-How to add env variables (in case want to set watchover telegram notifications)
+- `MEDIA_DOMAIN`: a dedicated subdomain such as `media.home.arpa` (private LAN) or
+  `media.example.com`. Resolve it and **auth, sonarr, radarr, prowlarr, bazarr,
+  requests, downloads** beneath it to the server's LAN IP in your router's DNS.
+  A hosts-file entry for each name also works for initial testing.
+- Surfshark → VPN → Manual Setup → WireGuard: register/generate a key, download
+  its configuration, and copy the **private key** and IPv4 **Address including
+  CIDR** into `WIREGUARD_PRIVATE_KEY` and `WIREGUARD_ADDRESSES`.
+- `VPN_COUNTRIES`: your preferred exit country; this does not determine audio.
+- `PLEX_BIND_IP`: set to the server's LAN IP for TV/device access. It defaults to
+  `127.0.0.1`, so Plex starts restricted to the server itself. Do not forward it
+  from your router unless you deliberately configure authenticated Plex remote access.
+- `PUID` / `PGID`: the user/group owning your media folders. `TZ` defaults to
+  Europe/Luxembourg.
 
-``` bash
-export TELEGRAM_TOKEN=real_token_here
-export TELEGRAM_CHAT_ID=real_chat_id
+### 2. Create the password-protected account
+
+```sh
+python3 scripts/setup.py
 ```
 
-## Service Configuration
+The script tells you how to generate an Argon2 password hash interactively using
+Authelia. Paste the digest locally. The script creates private, ignored config
+files and random secrets, and refuses to overwrite an existing account.
 
-Setting up all the services correctly takes time and attention to detail. If this is your first time working with self-hosted apps, Docker, or media management tools, expect some trial and error. There’s no one-size-fits-all setup, but the following sections walk through the main configuration steps you’ll need.
+Validate before starting:
 
-Before continuing, be aware of your local laws regarding torrent usage and copyright. This setup is intended for managing your own media collection.
+```sh
+docker compose config --quiet
+docker compose run --rm --no-deps authelia authelia config validate --config /config/configuration.yml
+docker compose run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker compose up -d --build
+```
 
-### Plex
+Caddy uses an **internal certificate authority** for LAN HTTPS. Copy
+`provision/caddy/data/caddy/pki/authorities/local/root.crt` from the server and
+trust that root certificate on each client device. Do not distribute its private
+key or disable TLS verification. For a real public DNS name, replace `tls internal`
+in `deploy/Caddyfile` with your preferred public certificate configuration.
 
-- Access the Plex Web UI `http://<host>:32400/web`
-- You will be prompted to sign in or create a new account.
-- After signing in, you'll be prompted to add your media folders.
-- Once you've added your media, Plex will begin analyzing your media files, and then it will be ready to use.
-- Enable ``Scan my library automatically`` and ``Run a partial scan when changes are detected`` from ``Settings``>``Library`` tab
-- Additional resources: [github.com/plexinc/pms-docker](https://github.com/plexinc/pms-docker)
+Visit `https://MEDIA_DOMAIN`, sign in, and tick **Remember me**. The browser session
+lasts up to 30 days, with persisted Redis storage. Without Remember Me, sessions
+expire after 12 hours or 1 hour inactivity. Clearing cookies, logging out, or
+revoking sessions requires a new login. App-native accounts are still required;
+Authelia adds a shared front door, not universal single sign-on to every app.
 
-### Heimdall
+### 3. Connect Plex and the management apps
 
-- Web UI available at ``http://<host>:80``
-- Click on ``Add an application here`` and search for the application, for example ``Plex``
-- Add the rest of the services from ``Application list`` then ``Add``, here is a table for all the applications
+Use an SSH tunnel for initial setup if these apps are not running on your desktop:
 
-| Title        | URL                        |
-|--------------|----------------------------|
-| Plex         | `http://<host>:32400/web`  |
-| qBittorrent  | `http://<host>:8080`       |
-| Radarr       | `http://<host>:7878`       |
-| Sonarr       | `http://<host>:8989`       |
-| Lidarr       | `http://<host>:8686`       |
-| Prowlarr     | `http://<host>:9696`       |
-| Jackett      | `http://<host>:9117`       |
-| Bazarr       | `http://<host>:6767`       |
-| Huntarr      | `http://<host>:9705`       |
-| Suggestarr   | `http://<host>:5000`       |
-| Ombi         | `http://<host>:3579`       |
+```sh
+ssh -L 32400:127.0.0.1:32400 -L 8989:127.0.0.1:8989 -L 7878:127.0.0.1:7878 -L 9696:127.0.0.1:9696 -L 8080:127.0.0.1:8080 your-server
+```
 
-- Last, you may want to change home page background from settings menu
+If `PLEX_BIND_IP` is your LAN IP, forward that LAN address for Plex instead.
+Claim Plex at `http://localhost:32400/web` using its normal sign-in, or use a fresh
+`PLEX_CLAIM` from https://plex.tv/claim on first launch. Add these library folders:
 
-### qBittorrent
+- Movies: `/data/media/movies`
+- Series: `/data/media/tv`
 
-Access the Qbittorrent web interface at ``http://<host>:8080`` to set up and configure your download client.
+Enable automatic library scanning. Add a Plex account token to `PLEX_TOKEN` in
+`.env` (see https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/),
+then run `docker compose up -d portal`. Tokens stay server-side. Remove the
+short-lived claim token from `.env` after claiming the server.
 
-1. Change default credentials
-   The default credentials for the qBittorrent service provided in the LinuxServer's image are as follows:
-     - Username: admin
-     - Password: adminadmin
-  
-   It's important to note that these are the default credentials and it's highly recommended that you change them as soon as possible. You can change the credentials by going to the qBittorrent Web UI, and then navigating to the ``Settings``>``WebUI`` tab, and then change the username and password fields.
-   It's also a good practice to use unique and strong passwords for all your services and update them regularly to ensure the security of your media server.
+The homepage links to the protected apps. Set a native strong password in each
+app as well; keep authentication required and do not enable broad LAN bypasses.
 
-2. Downloads options (used for category-based save paths)
-   When logged in click he "gear icon" to open ``Options``.
-   Under ``Downloads tab``, ``Saving Management section`` configure as follows:
-    - ``Default Torrent Management Mode``: ``Automatic`` (This is required for category-based save paths to work)
-    - ``When Torrent Category changed``: ``Relocate torrent``
-    - ``When Default Save Path changed``: ``Relocate affected torrents``
-    - ``When Category Save Path changed``: ``Relocate affected torrents``
-    - ``Default Save Path``: ``/data/torrents``
-    - Click ``Save`` at the bottom of the panel
+- **qBittorrent:** username `admin`; get the temporary password from
+  `docker compose logs qbittorrent`, then set your own password. There is no fixed
+  `adminadmin` password. Set the network interface to **tun0** in Advanced settings
+  as an additional VPN safeguard. Use `/data/torrents`, automatic management, and
+  categories `radarr` → `/data/torrents/movies`, `sonarr` → `/data/torrents/tv`.
+- **Sonarr/Radarr download client:** host **gluetun**, port **8080**, and your
+  qBittorrent credentials. The downloader shares Gluetun's network namespace.
+  Do not use the old `qbittorrent` hostname. Use the matching category above.
+- **Prowlarr:** add your permitted indexers and connect to
+  `http://sonarr:8989` and `http://radarr:7878` with their API keys.
+- **Sonarr/Radarr roots:** `/data/media/tv` and `/data/media/movies`. Enable
+  hardlinks instead of copies. All three containers mount `./content` at `/data`;
+  keep torrents and media on the same filesystem for hardlinks to work.
+- **Bazarr:** connect to those same Sonarr/Radarr endpoints with API keys. Create
+  profiles for full English/German subtitles (plus Japanese if wanted), assign
+  them to movies/series, and configure your subtitle providers. Missing subtitle
+  searches can then run on its schedule. Plex must rescan to detect new tracks.
+- **Overseerr:** connect Plex and your Arr apps. Choose a default download profile.
+  Review/change the profile when requesting another audio language.
 
-3. Seed Limits (optional)
-   Once again go to ``Options`` and under ``BitTorrent tab``, ``Seeding Limits``section configure your preference, more about the options described here: [Seeding limits demystified in qBittorrent](https://scribbleghost.net/2022/04/08/seeding-limits-demystified-in-qbittorrent/).
-   For example, ``When seeding time reaches 1440min (24h)`` and ``When ratio reaches 1`` then ``Pause torrent`` (Dont worry when donwload is complate Radarr will copy files to another directory).
-   Set it to pause/stop when share ratio is met. In Sonarr/Radarr, enable Complete Download Handler and Failed Download Handler and enable Remove on both.
-   That way, when torrents are done they'll pause and then Sonarr/Radarr will remove them after they've imported.
+### 4. Add strict acquisition profiles
 
-4. Categories
-   - Radarr
-     In he WebUI in the left menu expand ``CATEGORIES`` and right click on All, Select ``Add category``.
-     In the ``New Category`` windows configure as follows:
-       - Category: ``radarr`` (this must correspond to the category that is later configured in radarr)
-       - Save path: ``/data/torrents/movies``
-       - Click ``Add``  
-   - Sonarr
-     Repeat the process for Sonarr
-       - Category: ``sonarr``(this must correspond to the category that is later configured in sonarr download client, dafault is sonarr-tv but will use sonarr)
-       - Save path ``/data/torrents/tv``
-   - Lidarr
-     Repeat the process
-       - Category: ``lidarr``
-       - Save path ``/data/torrents/music``
+Run on the server (API keys are entered at a hidden prompt):
 
-### Prowlarr
+```sh
+python3 scripts/language_profiles.py sonarr
+python3 scripts/language_profiles.py radarr
+```
 
-1. Credentials
-   First time access Prowlarr WEB UI you will be prompted to create credentials.
-2. Indexers
-   The first thing to set up in Prowlarr is indexers.
-   You will add each indexer individually to Prowlarr, done from sidebar ``Indexers`` tab.
-   You may use priority when configure them.
-3. Sync Profiles
-   Uder ``Settings``>``Apps``, use the default profile "Standard"
-4. Apps
-   Where we will configure Prowlarr to connect your other apps such as Radarr and Sonarr.
-   Navigate to ``Settings``>``Apps`` and  choose:
-   - Radarr
-     You will need API Key (retrieve it from Radarr WEB UI ``Settings``> ``General`` > ``Security``), save it later use
-     Sync Level: Use the default, ``Add and Remove Only``
-     Prowlarr Server: ``http://prowlarr:9696`` (using the container name, because of the defined network)
-     Radarr Server: ``http://radarr:7878``
-   - Sonarr
-     Same steps as Radarr
-     API Key
-     Prowlarr Server: ``http://prowlarr:9696``
-     Sonarr Server: ``http://sonarr:8989``
-   - Lidarr
-     Same steps
-     API Key
-     Prowlarr Server: ``http://prowlarr:9696``
-     Lidarr Server: ``http://lidarr:8686``
-5. Notifications (optional)
-   Nice to have, using telegram bot as notifications.
-   There is a lot of information how to create Telegram bot using "Bot Father"
-   You will need to have a bot token and ChatId.
-   When retrieve Chat ID, take a not that starts with symbol ``-``
+Creates `Media audio · German`, `Media audio · English`, and
+`Media audio · Japanese` profiles using each app's current language IDs and
+custom-format schema. Profiles require the matching audio score and allow HD
+720p/1080p WEB/Bluray; there is **no English fallback** in the German profile.
+Select a profile per movie/series or in the request app. It leaves existing
+profiles, assignments and files alone and does not trigger searches/downloads.
+Reruns preserve existing profiles. Upgrades are disabled to avoid repeated
+replacement downloads; enable deliberately if you want that behavior.
 
-Additional resources:
+Release-language tags can be inaccurate; the portal verifies actual tracks after
+import. A Japanese acquisition profile does not guarantee subtitles: configure
+Bazarr and check the portal. Sonarr/Radarr generally manage one chosen release per
+movie/episode; switching the acquisition profile can replace that file on a later
+search. Prefer dual/multi-audio media when you want several audio languages
+available immediately without replacing files.
 
-- [Prowlarr Quick Start Guide (Official docs)](https://wiki.servarr.com/prowlarr/quick-start-guide)
-- [Prowlarr - A must have for easy automation! (YouTube)](https://www.youtube.com/watch?v=5deZNf2WhwI)
-- [Prowlarr is the Jackett alternative you need (unraid-guides.com)](https://unraid-guides.com/2022/04/29/prowlarr-is-the-jackett-alternative-you-need/)
-- [Connect Prowlarr to Radarr (quickbox.io)](https://quickbox.io/knowledge-base/v2/applications/prowlarr/connect-prowlarr-to-radarr/)
+## VPN verification and outages
 
-### Jackett
+```sh
+bash scripts/vpn-check.sh
+```
 
-Optional, you may use only Prowlarr instead.
+The public IP inside qBittorrent must be a Surfshark exit, not your home IP.
+Gluetun's firewall stays enabled, qBittorrent has no independent network, and it
+starts only after Gluetun is healthy. A healthy Compose startup alone is not a
+proof against leaks: run this outage test on your actual host before downloads.
 
-- Access the Jackett Web UI by navigating to ``http://<host>:9117`` in your browser.
-- In the Jackett Web UI, click on the "Add indexer" button on the top right corner of the page.
-- You will find a list of available indexers, you can add or configure indexers as you wish.
+1. Pause downloads and run the check above.
+2. Run `docker compose exec gluetun ip link set tun0 down` and immediately run
+   `docker compose exec -T qbittorrent curl --fail --max-time 3 https://api.ipify.org`.
+   It must fail while the tunnel is down or return a Surfshark IP if Gluetun has
+   already reconnected; it must never return the home IP.
+3. Restore with `docker compose restart gluetun qbittorrent`, then repeat the check.
 
-### Radarr
+Plex stays outside the VPN. Surfshark does not provide incoming port forwarding;
+peer connectivity/seeding may be limited. The VPN does not give remote access to
+your home server. DNS/indexer searches in Prowlarr are outside Surfshark in this
+setup; only downloader traffic is routed through it.
 
-Radarr Web UI by navigating to ``http://<host>:7878`` in your browser.
+## Backups, health and updates
 
-1. Credentials
-   Add credentials ``Settings``>``General``>``Security``
-2. Download Clients
-   Located in ``Settings``>``Download Clients`` tab, click on the "Add" button to add a new download client, select "qBittorrent" from the list
-   Host: ``qbittorrent``, not IP or localhost
-   Port: 8080 (default)
-   Username and Password
-   Category: radarr (should be fill as default)
-   Test and Save buttons
-3. Indexers (Optional)
-   Nothing to do. Prowlarr should already seeded the indexers.
-   If using Jackett:
-      - In the "Indexers" tab, follow the instructions provided from Jackett page
-      - For the URL input, use the container name ``jackett`` instead of IP or localhost or whatever you copy from the Jackett panel, for example ``http://jackett:9117/api/v2..``, do not forget to press the save button located on top.
-4. Media Management
-   Movie Naming
-      - In the ``Media Management`` tab, you can configure how Radarr should organize and rename your downloaded movies.
-      - Enable ``Rename Movies``
-      - Naming pattern I found usefull, for example: ``({Release Year}) {Movie Title} {Quality Full}`` correspond to ``(2010) The Movie Title Bluray-1080p Proper``
+```sh
+bash scripts/backup.sh
+python3 scripts/health.py
+```
 
-   Enable ``Unmonitor Deleted Movies``
-   Root Folders
-      - ``/data/media/movies/``
-      - ``/data/media/movies favorite/`` (Optional)
-        Have a such folder where all my favorite movies to be in, so if i need to clean up space to inspect only the folder with the movies not in the favorites.
-      - ``/data/media/kids/`` (Optional)
-        Dedicated library for child-friendly titles so Radarr can keep ratings filters and restrictions isolated.
+Backups briefly stop the currently running services for consistent databases and
+restart those services afterward. They include `.env`, app configuration,
+databases, certificates and credentials, **not media files**. Archives are private
+and checksummed; copy them to encrypted storage on another disk. No automatic
+retention/deletion is enabled. For restore: stop the stack, verify the `.sha256`
+file, extract the archive into a clean checkout, check ownership, then start.
+This restores authentication/session state too; revoke sessions if restoring after
+a security incident. Test restore on an isolated host.
 
-5. Notifications (Optional)
-   Using Telegram, same as configuration described in Prowlarr
-6. Analytics (Optional)
-   You may want to turn of ``Send Anonymous Usage Data`` from ``Settings``>``General``>``Analytics``
-7. Lists (Optional) **WIP!**
-   Radarr Lists are custom collections of movies in the Radarr movie management software, used to keep track of and organize the movies in your collection.
-   They can be customized and used with Radarr's "Lists and Indexers" feature for efficient movie management.
-   Radarr Lists allow you to create custom lists of movies, such as "Want to Watch", "Watched", "Owned", and so on.
-   This helps you keep track of which movies you have and which ones you still need to add to your collection.
-   Allows you to search for movies from specific sources, such as IMDb, Trakt, or TMDB. By using Radarr Lists and Indexers together, you can easily find the movies you want to add to your collection and keep track of your progress.
-8. Custom Formats (Optional)
-   This could help us to search for example a movie that translated in out native language
-   For example, prioritize BG Audio movies:
-      - Click on ``Add Custom Format``, give it a name
-      - Conditions:
-        - Type: ``Release Title``, Name: ``BGAUDIO in tittle``, Regular Expression: ``BGAUDIO``
-        - Type: ``Release Title``, Name: ``Bulgarian in tittle``, Regular Expression: ``Bulgarian``
-        - Type: ``Language``, Name: ``BG audio source``, Language: ``Bulgarian``
+Run `scripts/health.py` from your own cron/systemd schedule to check missing,
+stopped/unhealthy containers and disk space. It logs problems and exits nonzero.
+Optional `ALERT_WEBHOOK` must be exported in that scheduler's environment to send
+JSON `{ "text": "..." }` alerts; it is not automatically loaded from `.env`.
+No scheduled jobs or external notifications are created by installing this repo.
 
-Once you've finished configuring Radarr, you can start adding movies to your library by clicking on the "Add Movies" button on the top right corner of the page.
-You can also set up Radarr to automatically search for new movies by clicking on the "Calendar" button on the sidebar of the page.
+Sonarr, Radarr, qBittorrent, Gluetun, Caddy and Authelia are versioned in Compose.
+Other inherited images still follow their release channels; review and pin them
+to tested tags/digests before a production rollout. Back up before pulling newer
+images. No automatic container updater is enabled. Plex no longer runs privileged.
+Logs rotate at 10 MiB × 3 files per container.
 
-### Sonarr
+Extra inherited services are opt-in via `docker compose --profile extras up -d`:
+Lidarr, Jackett, Ombi, Heimdall, Huntarr, Suggestarr and FlareSolverr. Their ports
+are loopback-only and have no default public reverse-proxy routes. Prowlarr and
+Overseerr are the default source/request apps. Older setup context is archived in
+[docs/upstream-setup.md](docs/upstream-setup.md); its port/network assumptions are
+historical.
 
-Visit ``http://<host>:8989`` to set up your Sonarr and configure your TV shows library.
-Sonarr configuration is straight forward, you may follow the guidelines from Radarr, in summary:
+## Validation
 
-1. Credentials
-2. Download Clients
-   Host: ``qbittorrent``
-   Category ``sonarr``, default is ``tv-sonarr``
-3. Indexers (Optional)
-   Prowlarr should already seeded the indexers.
-4. Media Management
-   Episode Naming
-      - Season Folder Format: ``{Series Year} Season {season}``
-   Enable ``Unmonitor Deleted Movies``
-   Root Folders
-      - ``/data/media/tv/``
-5. Notifications (Optional)
-   ``Settings``>``Connect``
-6. Analytics (Optional)
-   ``Send Anonymous Usage Data`` from ``Settings``>``General``>``Analytics``
-7. Lists (Optional)
+```sh
+python3 -m pip install PyYAML
+python3 -m unittest discover -s tests -v
+bash -n scripts/backup.sh scripts/vpn-check.sh
+```
 
-Once you've added your TV shows, Sonarr will begin searching for them, downloading them and adding them to your Plex library.
-
-### Lidarr
-
-Web interface available at ``http://<host>:8686``  
-Configuration similar to Radarr and Sonarr, check them for reference.
-
-### Bazarr
-
-Access the Bazarr web interface by going to ``http://<host>:6767`` in a web browser.
-
-1. Credentials
-   ``Settings``>``General``>``Security`` and for the Authentication choose ``Form`` then ``Save`` changes
-2. Analytics
-   You may want to disable, ``Settings``>``General``>``Analytics``
-3. Languages
-   ``Settings``>``Languages``, next values are up to you, for example:
-   Languages Filter: ``Bulgarian`` ``English``
-   Languages Profiles: Name ``BG/EN``, choose the Languages
-   Default Settings: Enable for Series and Movies
-   Don't forget to ``Save`` before leaving the page
-4. Use Sonarr and Radarr
-   This will sync with apps
-   An API key's will be needed
-   You may also want to check the ``Minimum Score`` under ``Options`` section, leave it default, works fine.
-5. Notifications (Optional)
-   Same as other services
-   ``tgram://{BotToken}/{ChatId}``
-6. Providers
-   Add providers, the most important part, for example:
-   - OpenSubtitles.org
-   - Subsunacs.net
-   - Subs.sab.bz
-   - Yavka.net
-   - Supersubtitles
-7. Scheduler
-   - You may want to update some of the settigns such as ``Sonarr/Radarr Sync``
-
-It's worth noting that the specifics of the setup may vary depending on your specific setup, but the above steps should give you a good starting point.
-You can also refer to the official documentation of Bazarr for more information about the settings and options available.
-
-- [wiki.bazarr.media/Getting-Started/Setup-Guide/](https://wiki.bazarr.media/Getting-Started/Setup-Guide/)
-- [wiki.bazarr.media/Additional-Configuration/](https://wiki.bazarr.media/Additional-Configuration/Settings/)
-- [wiki.bazarr.media/Troubleshooting/FAQ](https://wiki.bazarr.media/Troubleshooting/FAQ/#what-are-forced-subtitles)
-
-### Huntarr
-
-Huntarr continually scans your Radarr/Sonarr/Lidarr libraries and triggers searches for missing items or quality upgrades so the stack keeps improving even when RSS is quiet.
-
-- Web UI: ``http://<host>:9705``
-- First launch: create an admin account, then add your Arr apps using container hostnames (``http://sonarr:8989``, ``http://radarr:7878``, ``http://lidarr:8686``) plus their API keys.
-
-### Suggestarr
-
-Suggestarr provides a small web UI for browsing titles and forwarding picks to your Arr apps.
-
-- Web UI: ``http://<host>:5000``.
-- Configure Radarr/Sonarr endpoints from the settings page using container hostnames (``http://radarr:7878``, ``http://sonarr:8989``) and their API keys so requests post back into the stack.
-
-
-### Ombi
-
-Access the Ombi web interface by navigating to the URL ``http://<host>:3579`` in a web browser.
-
-1. Follow the initial setup from Ombi, (``Welcome``>``Media Server``>``Create local admin``>``Ombi config``).
-2. Connect Ombi to your media server(s) or download client(s), such as Plex, Sonarr, Radarr, etc.
-   Sonarr
-   Configuration located in ``Settings``>``Sonarr``, you will need API Key for Hostname: ``sonarr``.
-   On the left press ``Load Qualities`` and choose default profile, same for ``Load Folders`` and ``Load Languages``.
-   Radarr and Lidarr are configured in a similar way.
-3. Notifications (Optional).
-   Using Telegram, same as other services configuration.
-4. Data collection (Optional).
-   You may want to turn off ``Allow us to collect anonymous analytical data e.g. browser used`` from ``Configuration``>``General``.
-5. Add Plex **WIP!**
-   From ``Settings``>``Media Server``
-
-Additional resources:
-
-- [Ombi - Bytesized Hosting Wiki](https://bytesized-hosting.com/pages/ombi)
-
-## References
-
-- [Servarr Docs](https://wiki.servarr.com/docker-guide)
-- [Flemmingss - Media Automation Guide](https://flemmingss.com/a-minimal-configuration-step-by-step-guide-to-media-automation-in-unraid-using-radarr-sonarr-prowlarr-jellyfin-jellyseerr-and-qbittorrent/)
-- [Webreaper Compose Example](https://gist.github.com/Webreaper/81ecda3ecc45fa61a16dfc90cfc4550d)
-
-This README focuses on practical setup steps with minimal fluff. If you need help or want to explore more customizations, check the full guide: [wiki.ayanev.eu](https://wiki.ayanev.eu/#/do-it-yourself/2023-01-home-media-server/)
+CI also runs Docker Compose interpolation checks, Authelia/Caddy native config
+validation, and a portal image build using public dummy credentials. Live Plex
+playback, client behavior, Surfshark credentials, kill-switch operation, TLS trust
+and real release-language detection require a configured deployment and are not
+claimed by the unit tests.

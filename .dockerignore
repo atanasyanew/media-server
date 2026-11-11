@@ -1,0 +1,5 @@
+**
+!portal/
+!portal/app.py
+!portal/index.html
+!portal/Dockerfile

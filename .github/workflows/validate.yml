@@ -1,0 +1,33 @@
+name: Validate media stack
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install PyYAML
+      - run: python -m unittest discover -s tests -v
+      - run: bash -n scripts/backup.sh scripts/vpn-check.sh
+      - name: Generate non-secret validation configuration
+        run: python tests/prepare_validation.py
+      - run: docker compose config --quiet
+      - run: docker compose run --rm --no-deps authelia authelia config validate --config /config/configuration.yml
+      - run: docker compose run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - run: docker compose build portal
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright@1.56.1
+      - run: npx playwright install --with-deps chromium
+      - run: node tests/browser-smoke.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-previews
+          path: browser-*.png
+          if-no-files-found: ignore

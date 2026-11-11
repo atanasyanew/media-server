@@ -1,0 +1,58 @@
+(private_tls) {
+    tls internal
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy same-origin
+        X-Frame-Options SAMEORIGIN
+    }
+}
+(protected) {
+    # Never accept identity headers supplied by the browser.
+    request_header -Remote-User
+    request_header -Remote-Groups
+    request_header -Remote-Email
+    request_header -Remote-Name
+    forward_auth authelia:9091 {
+        uri /api/authz/forward-auth
+        copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
+    }
+}
+auth.{$MEDIA_DOMAIN} {
+    import private_tls
+    reverse_proxy authelia:9091
+}
+{$MEDIA_DOMAIN} {
+    import private_tls
+    import protected
+    reverse_proxy portal:8090
+}
+sonarr.{$MEDIA_DOMAIN} {
+    import private_tls
+    import protected
+    reverse_proxy sonarr:8989
+}
+radarr.{$MEDIA_DOMAIN} {
+    import private_tls
+    import protected
+    reverse_proxy radarr:7878
+}
+prowlarr.{$MEDIA_DOMAIN} {
+    import private_tls
+    import protected
+    reverse_proxy prowlarr:9696
+}
+bazarr.{$MEDIA_DOMAIN} {
+    import private_tls
+    import protected
+    reverse_proxy bazarr:6767
+}
+requests.{$MEDIA_DOMAIN} {
+    import private_tls
+    import protected
+    reverse_proxy overseerr:5055
+}
+downloads.{$MEDIA_DOMAIN} {
+    import private_tls
+    import protected
+    reverse_proxy gluetun:8080
+}

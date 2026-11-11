@@ -22,3 +22,19 @@ provision/.env.*
 
 !provision/.env.defaults
 
+
+
+.env
+.env.*
+!.env.example
+!provision/.env.defaults
+provision/authelia/
+provision/redis/
+provision/caddy/
+provision/gluetun/
+backups/
+__pycache__/
+*.pyc
+node_modules/
+package-lock.json
+browser-*.png
