@@ -72,10 +72,12 @@ python3 scripts/setup.py
 
 The script tells you how to generate an Argon2 password hash interactively using
 Authelia. Paste the digest locally. The script creates private, ignored config
-files and random secrets, and refuses to overwrite an existing account. Run it as
-the `PUID` user (not with sudo): it also creates `provision/vpn`, where the portal
-saves your Surfshark credentials. On an existing install, run it once more; it
-creates that folder and then stops at "Authentication is already configured".
+files and random secrets, and refuses to overwrite an existing account. It also
+creates `provision/vpn`, where the portal saves your Surfshark credentials.
+
+`./start.sh` does all of this in one go: it runs the setup when needed, builds and
+starts every service, and on first start waits until you connect Surfshark on the
+portal page, then starts qBittorrent too. Run it again any time; it is safe to repeat.
 
 Validate before starting:
 
@@ -101,8 +103,7 @@ Authelia adds a shared front door, not universal single sign-on to every app.
 **Connect the VPN:** on the portal page, enter the username and password from
 Surfshark → VPN → Manual setup → **Credentials** (not your account email) and
 press **Connect**. The VPN starts within a minute and the page shows its public IP.
-On first install, run `docker compose up -d` once more after that, so qBittorrent
-(which waits for the VPN) starts too. Changing the credentials later reconnects
+`./start.sh` then starts qBittorrent, which waits for the VPN. Changing the credentials later reconnects
 the running VPN directly.
 
 ### 3. Connect Plex and the management apps

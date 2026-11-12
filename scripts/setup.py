@@ -64,22 +64,25 @@ def generate(root, domain, username, digest, email):
         (root / 'content/torrents' / name).mkdir(parents=True, exist_ok=True)
 
 
-def vpn_files(root):
+def vpn_files(root, owner=None):
     """Folder the portal saves Surfshark credentials in, and the key it uses to apply them in Gluetun."""
     folder = root / 'provision/vpn'
     folder.mkdir(parents=True, exist_ok=True)
     folder.chmod(0o700)
-    if (folder / 'control.key').exists():
-        return
-    key = secrets.token_urlsafe(32)
-    auth = root / 'provision/gluetun/auth'
-    auth.mkdir(parents=True, exist_ok=True)
-    (auth / 'config.toml').write_text('[[roles]]\nname = "portal"\nauth = "apikey"\napikey = "' + key +
-        '"\nroutes = ["GET /v1/vpn/status", "PUT /v1/vpn/settings", "GET /v1/publicip/ip"]\n')
-    (auth / 'config.toml').chmod(0o600)
-    with (folder / 'control.key').open('x') as f:
-        f.write(key)
-    (folder / 'control.key').chmod(0o600)
+    key_file = folder / 'control.key'
+    if not key_file.exists():
+        key = secrets.token_urlsafe(32)
+        auth = root / 'provision/gluetun/auth'
+        auth.mkdir(parents=True, exist_ok=True)
+        (auth / 'config.toml').write_text('[[roles]]\nname = "portal"\nauth = "apikey"\napikey = "' + key +
+            '"\nroutes = ["GET /v1/vpn/status", "PUT /v1/vpn/settings", "GET /v1/publicip/ip"]\n')
+        (auth / 'config.toml').chmod(0o600)
+        with key_file.open('x') as f:
+            f.write(key)
+        key_file.chmod(0o600)
+    if owner:  # run with sudo: the portal (PUID/PGID) must still be able to write here
+        for path in (folder, key_file):
+            os.chown(path, *owner)
 
 
 def main():
@@ -90,7 +93,10 @@ def main():
         raise SystemExit('First copy .env.example to .env and set MEDIA_DOMAIN.')
     env = read_env(envfile)
     domain = validate_domain(env.get('MEDIA_DOMAIN', ''))
-    vpn_files(ROOT)
+    vpn_files(ROOT, (int(env.get('PUID', 1000)), int(env.get('PGID', 1000))) if os.geteuid() == 0 else None)
+    if (ROOT / 'provision/authelia/configuration.yml').exists():
+        print('Authentication is already configured.')
+        return
     print('Generate a password hash in another terminal (your password stays local):')
     print('docker run --rm -it authelia/authelia:4.39.28 authelia crypto hash generate argon2')
     username = input('Login username: ').strip()
