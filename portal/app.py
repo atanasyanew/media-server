@@ -174,6 +174,52 @@ class Plex:
                 'plexUrl': 'https://app.plex.tv/desktop/#!/server/' + quote(machine, safe='') + '/details?key=' + quote('/library/metadata/' + numeric(item), safe='')}
 
 
+class VPN:
+    """Surfshark credentials saved for Gluetun, applied live through its control server."""
+    def __init__(self):
+        self.folder = Path(os.environ.get('VPN_DIR', '/vpn'))
+        self.base = os.environ.get('GLUETUN_URL', 'http://gluetun:8000')
+
+    def request(self, path, body=None):
+        key = (self.folder / 'control.key').read_text().strip()
+        req = Request(self.base + path, data=None if body is None else json.dumps(body).encode(), method='GET' if body is None else 'PUT',
+                      headers={'X-API-Key': key, 'Content-Type': 'application/json'})
+        with urlopen(req, timeout=10) as response:
+            return response.read(65536)
+
+    def status(self):
+        configured = all((self.folder / name).exists() for name in ('openvpn_user', 'openvpn_password'))
+        try:
+            state = json.loads(self.request('/v1/vpn/status')).get('status', 'unknown')
+            ip = json.loads(self.request('/v1/publicip/ip')) if state == 'running' else {}
+        except (OSError, ValueError):
+            state, ip = 'unreachable', {}
+        return {'configured': configured, 'status': state, 'ip': ip.get('public_ip', ''), 'country': ip.get('country', '')}
+
+    def save(self, username, password):
+        username, password = username.strip(), password.strip()
+        if not all(0 < len(v) <= 200 and v.isprintable() for v in (username, password)):
+            raise ValueError('Enter the Surfshark manual-setup username and password.')
+        try:
+            for name, value in (('openvpn_user', username), ('openvpn_password', password)):
+                tmp = self.folder / (name + '.tmp')
+                tmp.unlink(missing_ok=True)
+                with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as f:
+                    f.write(value)
+                os.replace(tmp, self.folder / name)
+        except OSError:
+            raise UpstreamError('Could not save the credentials. Run scripts/setup.py as the PUID user so provision/vpn is writable.') from None
+        try:
+            self.request('/v1/vpn/settings', {'openvpn': {'user': username, 'password': password}})
+        except HTTPError:
+            raise UpstreamError('Saved, but the VPN rejected them. Check the Surfshark manual-setup credentials.') from None
+        except URLError:
+            return {'message': 'Saved. The VPN starts with these credentials within a minute.'}
+        except OSError:
+            raise UpstreamError('Saved. Run scripts/setup.py, then: docker compose restart gluetun') from None
+        return {'message': 'Saved. The VPN is reconnecting with these credentials.'}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = 'MediaPortal'
 
@@ -228,11 +274,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, plex.items(numeric(get('section')), start, get('search')))
             if not write and parsed.path == '/api/availability':
                 return self.send(200, availability(plex.metadata(get('item')), get('audio', 'de'), get('subtitle', 'none')))
-            if write and parsed.path == '/api/select':
+            if not write and parsed.path == '/api/vpn':
+                return self.send(200, VPN().status())
+            if write and parsed.path in {'/api/select', '/api/vpn'}:
                 size = int(self.headers.get('Content-Length', '0'))
                 if size < 1 or size > 4096 or self.headers.get('Content-Type') != 'application/json':
                     raise ValueError('Invalid request body.')
                 data = json.loads(self.rfile.read(size))
+                if parsed.path == '/api/vpn':
+                    try:
+                        return self.send(200, VPN().save(str(data['username']), str(data['password'])))
+                    except (ValueError, KeyError, TypeError):
+                        return self.send(400, {'error': 'Enter the Surfshark manual-setup username and password.'})
                 return self.send(200, plex.select(numeric(data['item']), data['audio'], data['subtitle'], numeric(data['media'])))
             return self.send(404, {'error': 'Not found.'})
         except (ValueError, KeyError, TypeError, UnicodeError):

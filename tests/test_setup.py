@@ -36,6 +36,16 @@ class SetupTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 setup.generate(root, 'media.home.arpa', 'admin', DIGEST, 'admin@example.com')
 
+    def test_vpn_files_share_one_key_and_are_kept(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            setup.vpn_files(root)
+            key = (root / 'provision/vpn/control.key').read_text()
+            self.assertIn(f'apikey = "{key}"', (root / 'provision/gluetun/auth/config.toml').read_text())
+            self.assertEqual((root / 'provision/vpn').stat().st_mode & 0o777, 0o700)
+            setup.vpn_files(root)
+            self.assertEqual((root / 'provision/vpn/control.key').read_text(), key)
+
     def test_domain_injection_rejected(self):
         for value in ['localhost', 'example.com', 'x\npolicy: bypass', 'media.*.com', 'media.bad-.com']:
             with self.assertRaises(ValueError):

@@ -326,17 +326,17 @@ services:
     - /dev/net/tun:/dev/net/tun
     environment:
       VPN_SERVICE_PROVIDER: surfshark
-      VPN_TYPE: wireguard
-      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_PRIVATE_KEY:?Set Surfshark WireGuard private
-        key in .env}
-      WIREGUARD_ADDRESSES: ${WIREGUARD_ADDRESSES:?Set Surfshark WireGuard address
-        in .env}
+      # Credentials are saved from the portal into provision/vpn (mounted as /run/secrets).
+      VPN_TYPE: openvpn
       SERVER_COUNTRIES: ${VPN_COUNTRIES:-Netherlands}
       FIREWALL: 'on'
+      # Indexer searches (Prowlarr/Jackett) use this proxy so they leave through Surfshark.
+      HTTPPROXY: 'on'
       FIREWALL_INPUT_PORTS: '8080'
       TZ: ${TZ:-Europe/Luxembourg}
     volumes:
     - ./provision/gluetun:/gluetun
+    - ./provision/vpn:/run/secrets:ro
     ports:
     - 127.0.0.1:8080:8080
     restart: unless-stopped
@@ -356,6 +356,9 @@ services:
       PLEX_URL: http://plex:32400
       PLEX_TOKEN: ${PLEX_TOKEN:-}
       PORTAL_ORIGIN: https://${MEDIA_DOMAIN}
+    user: ${PUID:-1000}:${PGID:-1000}
+    volumes:
+    - ./provision/vpn:/vpn
     read_only: true
     tmpfs:
     - /tmp

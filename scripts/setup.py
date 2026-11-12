@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """Create local authentication files without committing credentials."""
 import argparse
-import base64
 import getpass
-import ipaddress
 import json
 import os
 from pathlib import Path
@@ -66,21 +64,33 @@ def generate(root, domain, username, digest, email):
         (root / 'content/torrents' / name).mkdir(parents=True, exist_ok=True)
 
 
+def vpn_files(root):
+    """Folder the portal saves Surfshark credentials in, and the key it uses to apply them in Gluetun."""
+    folder = root / 'provision/vpn'
+    folder.mkdir(parents=True, exist_ok=True)
+    folder.chmod(0o700)
+    if (folder / 'control.key').exists():
+        return
+    key = secrets.token_urlsafe(32)
+    auth = root / 'provision/gluetun/auth'
+    auth.mkdir(parents=True, exist_ok=True)
+    (auth / 'config.toml').write_text('[[roles]]\nname = "portal"\nauth = "apikey"\napikey = "' + key +
+        '"\nroutes = ["GET /v1/vpn/status", "PUT /v1/vpn/settings", "GET /v1/publicip/ip"]\n')
+    (auth / 'config.toml').chmod(0o600)
+    with (folder / 'control.key').open('x') as f:
+        f.write(key)
+    (folder / 'control.key').chmod(0o600)
+
+
 def main():
     argparse.ArgumentParser(description=__doc__).parse_args()
     os.umask(0o077)
     envfile = ROOT / '.env'
     if not envfile.exists():
-        raise SystemExit('First copy .env.example to .env and add your Surfshark manual WireGuard settings.')
+        raise SystemExit('First copy .env.example to .env and set MEDIA_DOMAIN.')
     env = read_env(envfile)
     domain = validate_domain(env.get('MEDIA_DOMAIN', ''))
-    try:
-        key = base64.b64decode(env.get('WIREGUARD_PRIVATE_KEY', ''), validate=True)
-        if len(key) != 32:
-            raise ValueError()
-        ipaddress.ip_interface(env['WIREGUARD_ADDRESSES'])
-    except (ValueError, KeyError):
-        raise SystemExit('Add a valid Surfshark WireGuard private key and IPv4/CIDR address in .env.') from None
+    vpn_files(ROOT)
     print('Generate a password hash in another terminal (your password stays local):')
     print('docker run --rm -it authelia/authelia:4.39.28 authelia crypto hash generate argon2')
     username = input('Login username: ').strip()

@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import tempfile
 import threading
 import unittest
 from unittest.mock import patch
@@ -164,6 +165,46 @@ class HTTPTests(unittest.TestCase):
             code, _, body = self.request('/api/availability?item=7&audio=de&subtitle=none', headers={'Remote-User': 'admin'})
             self.assertEqual(code, 502)
             self.assertIn(b'Connection unavailable', body)
+
+
+class VPNTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self.tmp.name)
+        (self.folder / 'control.key').write_text('secret-key')
+        self.env = patch.dict(os.environ, {'VPN_DIR': self.tmp.name, 'GLUETUN_URL': 'http://gluetun.test:8000'})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def test_save_writes_private_files_and_applies_live(self):
+        with patch.object(app, 'urlopen') as opened:
+            opened.return_value.__enter__.return_value.read.return_value = b'ok'
+            result = app.VPN().save(' user1 ', 'pass word')
+        self.assertIn('reconnecting', result['message'])
+        self.assertEqual((self.folder / 'openvpn_user').read_text(), 'user1')
+        self.assertEqual((self.folder / 'openvpn_password').read_text(), 'pass word')
+        self.assertEqual((self.folder / 'openvpn_password').stat().st_mode & 0o777, 0o600)
+        req = opened.call_args[0][0]
+        self.assertEqual((req.full_url, req.get_method(), req.get_header('X-api-key')), ('http://gluetun.test:8000/v1/vpn/settings', 'PUT', 'secret-key'))
+        self.assertEqual(json.loads(req.data), {'openvpn': {'user': 'user1', 'password': 'pass word'}})
+
+    def test_save_while_vpn_is_down_waits_for_restart(self):
+        with patch.object(app, 'urlopen', side_effect=app.URLError('refused')):
+            self.assertIn('within a minute', app.VPN().save('u', 'p')['message'])
+        self.assertTrue((self.folder / 'openvpn_user').exists())
+
+    def test_invalid_credentials_are_not_saved(self):
+        for user, password in [('', 'p'), ('u', ''), ('u\nx', 'p'), ('u', 'p' * 201)]:
+            with self.assertRaises(ValueError):
+                app.VPN().save(user, password)
+        self.assertFalse((self.folder / 'openvpn_user').exists())
+
+    def test_status_when_gluetun_is_unreachable(self):
+        with patch.object(app, 'urlopen', side_effect=app.URLError('refused')):
+            self.assertEqual(app.VPN().status(), {'configured': False, 'status': 'unreachable', 'ip': '', 'country': ''})
 
 
 if __name__ == '__main__':

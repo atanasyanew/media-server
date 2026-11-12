@@ -57,9 +57,6 @@ Edit `.env` locally:
   `media.example.com`. Resolve it and **auth, sonarr, radarr, prowlarr, bazarr,
   requests, downloads** beneath it to the server's LAN IP in your router's DNS.
   A hosts-file entry for each name also works for initial testing.
-- Surfshark → VPN → Manual Setup → WireGuard: register/generate a key, download
-  its configuration, and copy the **private key** and IPv4 **Address including
-  CIDR** into `WIREGUARD_PRIVATE_KEY` and `WIREGUARD_ADDRESSES`.
 - `VPN_COUNTRIES`: your preferred exit country; this does not determine audio.
 - `PLEX_BIND_IP`: set to the server's LAN IP for TV/device access. It defaults to
   `127.0.0.1`, so Plex starts restricted to the server itself. Do not forward it
@@ -75,7 +72,10 @@ python3 scripts/setup.py
 
 The script tells you how to generate an Argon2 password hash interactively using
 Authelia. Paste the digest locally. The script creates private, ignored config
-files and random secrets, and refuses to overwrite an existing account.
+files and random secrets, and refuses to overwrite an existing account. Run it as
+the `PUID` user (not with sudo): it also creates `provision/vpn`, where the portal
+saves your Surfshark credentials. On an existing install, run it once more; it
+creates that folder and then stops at "Authentication is already configured".
 
 Validate before starting:
 
@@ -97,6 +97,13 @@ lasts up to 30 days, with persisted Redis storage. Without Remember Me, sessions
 expire after 12 hours or 1 hour inactivity. Clearing cookies, logging out, or
 revoking sessions requires a new login. App-native accounts are still required;
 Authelia adds a shared front door, not universal single sign-on to every app.
+
+**Connect the VPN:** on the portal page, enter the username and password from
+Surfshark → VPN → Manual setup → **Credentials** (not your account email) and
+press **Connect**. The VPN starts within a minute and the page shows its public IP.
+On first install, run `docker compose up -d` once more after that, so qBittorrent
+(which waits for the VPN) starts too. Changing the credentials later reconnects
+the running VPN directly.
 
 ### 3. Connect Plex and the management apps
 
@@ -130,7 +137,10 @@ app as well; keep authentication required and do not enable broad LAN bypasses.
   qBittorrent credentials. The downloader shares Gluetun's network namespace.
   Do not use the old `qbittorrent` hostname. Use the matching category above.
 - **Prowlarr:** add your permitted indexers and connect to
-  `http://sonarr:8989` and `http://radarr:7878` with their API keys.
+  `http://sonarr:8989` and `http://radarr:7878` with their API keys. Route its
+  searches through Surfshark: Settings → General → Proxy → type **HTTP**, host
+  **gluetun**, port **8888**, keep **Bypass Proxy for Local Addresses** on.
+  (Jackett, if used: Proxy type HTTP, URL `gluetun`, port `8888`.)
 - **Sonarr/Radarr roots:** `/data/media/tv` and `/data/media/movies`. Enable
   hardlinks instead of copies. All three containers mount `./content` at `/data`;
   keep torrents and media on the same filesystem for hardlinks to work.
@@ -172,7 +182,8 @@ available immediately without replacing files.
 bash scripts/vpn-check.sh
 ```
 
-The public IP inside qBittorrent must be a Surfshark exit, not your home IP.
+The public IP inside qBittorrent, and through the indexer proxy, must be a
+Surfshark exit, not your home IP.
 Gluetun's firewall stays enabled, qBittorrent has no independent network, and it
 starts only after Gluetun is healthy. A healthy Compose startup alone is not a
 proof against leaks: run this outage test on your actual host before downloads.
@@ -186,8 +197,8 @@ proof against leaks: run this outage test on your actual host before downloads.
 
 Plex stays outside the VPN. Surfshark does not provide incoming port forwarding;
 peer connectivity/seeding may be limited. The VPN does not give remote access to
-your home server. DNS/indexer searches in Prowlarr are outside Surfshark in this
-setup; only downloader traffic is routed through it.
+your home server. Prowlarr/Jackett searches go through Surfshark only when their
+proxy is set as above; when the VPN is down those searches fail instead of leaking.
 
 ## Backups, health and updates
 
