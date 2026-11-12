@@ -24,7 +24,7 @@ def inspect():
     rows = json.loads(raw) if raw.startswith('[') else [json.loads(line) for line in raw.splitlines() if line]
     if not rows:
         problems.append('No media containers found.')
-    required = {'plex', 'radarr', 'sonarr', 'prowlarr', 'bazarr', 'qbittorrent', 'gluetun', 'portal', 'caddy', 'authelia', 'redis', 'overseerr'}
+    required = {'jellyfin', 'radarr', 'sonarr', 'prowlarr', 'bazarr', 'qbittorrent', 'gluetun', 'portal', 'caddy', 'authelia', 'redis', 'jellyseerr'}
     present = {row.get('Service') for row in rows}
     for service in sorted(required - present):
         problems.append(f'{service}: container is missing.')

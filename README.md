@@ -1,6 +1,6 @@
 # Home media server with language choices
 
-Plex playback, Sonarr/Radarr media management, Prowlarr sources, Bazarr subtitles,
+Jellyfin playback (free and open source), Sonarr/Radarr media management, Prowlarr sources, Bazarr subtitles,
 and qBittorrent routed through Surfshark. A new language page shows whether your
 files contain German, English, or Japanese audio and your chosen subtitles.
 Caddy and Authelia protect the browser apps with HTTPS and a 30-day Remember Me
@@ -11,10 +11,10 @@ session. Redis persists sessions through container restarts.
 1. Open the media homepage and choose **German**, **English**, or **Japanese**.
 2. Choose subtitles: English, German, Japanese, or Off. Japanese requires subtitles.
 3. Pick a library and search for a movie or episode. Choose **Check languages**.
-4. If a file version contains the requested tracks, choose **Use these tracks**,
-   then **Open in Plex**. Select the matching version if Plex asks.
+4. If a file version contains the requested tracks, choose **Use these languages**,
+   then **Open in Jellyfin**. Select the matching version if Jellyfin asks.
 
-The page checks actual Plex stream metadata for every part of a file version.
+The page checks actual Jellyfin stream metadata for every file version.
 It never combines audio from one version with subtitles from another. Full
 subtitles are required; a forced-only track does not satisfy the subtitle choice.
 Commentary and audio-description tracks do not count as a dub.
@@ -25,7 +25,7 @@ Commentary and audio-description tracks do not count as a dub.
 - **Subtitles are not available with this audio:** the audio exists, but the
   requested full subtitles are missing from that version.
 - **Availability unknown:** audio or requested subtitles are untagged/unanalysed.
-  If Plex cannot be reached, a connection error is shown separately and is never
+  If Jellyfin cannot be reached, a connection error is shown separately and is never
   presented as a missing dub.
 
 This cannot prove that an edition does not exist anywhere. It checks your own
@@ -33,17 +33,17 @@ library, not every streaming service or release source. It does not generate dub
 translate audio, download missing tracks, or splice separately acquired audio.
 Bazarr can fetch subtitles once you configure its providers.
 
-**Plex remains the player.** The portal is for one connected Plex account. Saved
-track selections apply to the account owning `PLEX_TOKEN`; use that same account
-in Plex. Your browser remembers your language choice. Native Plex/TV apps retain
-their own login and can override selections. During playback, the Plex player's
-Audio & Subtitles controls also let you switch between existing tracks.
+**Jellyfin is the player.** The portal is for one Jellyfin account (`JELLYFIN_USER`).
+**Use these languages** saves your preferred audio and subtitle language on that
+account, so Jellyfin picks those tracks in every title that has them. Use that same
+account in Jellyfin. Your browser remembers your language choice. Tracks you pick
+by hand in the Jellyfin player can override the preference for that title.
 
 ## First installation
 
 Requires Linux Docker Engine, the Compose plugin **v2.20+**, Python 3, a Surfshark
 subscription, and your own media/sources. Do this on the machine hosting the
-server. No VPN credentials or Plex tokens belong in GitHub or in chat.
+server. No VPN credentials or Jellyfin API keys belong in GitHub or in chat.
 
 ### 1. Configure the server address and VPN
 
@@ -55,12 +55,12 @@ Edit `.env` locally:
 
 - `MEDIA_DOMAIN`: a dedicated subdomain such as `media.home.arpa` (private LAN) or
   `media.example.com`. Resolve it and **auth, sonarr, radarr, prowlarr, bazarr,
-  requests, downloads** beneath it to the server's LAN IP in your router's DNS.
+  requests, downloads, jellyfin** beneath it to the server's LAN IP in your router's DNS.
   A hosts-file entry for each name also works for initial testing.
 - `VPN_COUNTRIES`: your preferred exit country; this does not determine audio.
-- `PLEX_BIND_IP`: set to the server's LAN IP for TV/device access. It defaults to
-  `127.0.0.1`, so Plex starts restricted to the server itself. Do not forward it
-  from your router unless you deliberately configure authenticated Plex remote access.
+- `JELLYFIN_BIND_IP`: set to the server's LAN IP for TV/phone apps
+  (`http://LAN-IP:8096`). It defaults to `127.0.0.1`, so Jellyfin starts restricted
+  to the server itself. Do not forward it from your router.
 - `PUID` / `PGID`: the user/group owning your media folders. `TZ` defaults to
   Europe/Luxembourg.
 
@@ -106,25 +106,24 @@ press **Connect**. The VPN starts within a minute and the page shows its public 
 `./start.sh` then starts qBittorrent, which waits for the VPN. Changing the credentials later reconnects
 the running VPN directly.
 
-### 3. Connect Plex and the management apps
+### 3. Connect Jellyfin and the management apps
 
 Use an SSH tunnel for initial setup if these apps are not running on your desktop:
 
 ```sh
-ssh -L 32400:127.0.0.1:32400 -L 8989:127.0.0.1:8989 -L 7878:127.0.0.1:7878 -L 9696:127.0.0.1:9696 -L 8080:127.0.0.1:8080 your-server
+ssh -L 8096:127.0.0.1:8096 -L 8989:127.0.0.1:8989 -L 7878:127.0.0.1:7878 -L 9696:127.0.0.1:9696 -L 8080:127.0.0.1:8080 your-server
 ```
 
-If `PLEX_BIND_IP` is your LAN IP, forward that LAN address for Plex instead.
-Claim Plex at `http://localhost:32400/web` using its normal sign-in, or use a fresh
-`PLEX_CLAIM` from https://plex.tv/claim on first launch. Add these library folders:
+If `JELLYFIN_BIND_IP` is your LAN IP, open that address instead. Open
+`http://localhost:8096`, follow the setup wizard to create your Jellyfin user (no
+online account needed), and add these libraries:
 
-- Movies: `/data/media/movies`
-- Series: `/data/media/tv`
+- Movies (content type Movies): `/data/media/movies`
+- Shows (content type Shows): `/data/media/tv`
 
-Enable automatic library scanning. Add a Plex account token to `PLEX_TOKEN` in
-`.env` (see https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/),
-then run `docker compose up -d portal`. Tokens stay server-side. Remove the
-short-lived claim token from `.env` after claiming the server.
+Then in Jellyfin → Dashboard → API Keys, create a key. Put it in `.env` as
+`JELLYFIN_API_KEY`, set `JELLYFIN_USER` to your Jellyfin username, and run
+`docker compose up -d portal`. The key stays server-side.
 
 The homepage links to the protected apps. Set a native strong password in each
 app as well; keep authentication required and do not enable broad LAN bypasses.
@@ -148,8 +147,9 @@ app as well; keep authentication required and do not enable broad LAN bypasses.
 - **Bazarr:** connect to those same Sonarr/Radarr endpoints with API keys. Create
   profiles for full English/German subtitles (plus Japanese if wanted), assign
   them to movies/series, and configure your subtitle providers. Missing subtitle
-  searches can then run on its schedule. Plex must rescan to detect new tracks.
-- **Overseerr:** connect Plex and your Arr apps. Choose a default download profile.
+  searches can then run on its schedule. Jellyfin must rescan to detect new tracks.
+- **Jellyseerr (Requests):** sign in with Jellyfin (`http://jellyfin:8096`) and
+  connect your Arr apps. Choose a default download profile.
   Review/change the profile when requesting another audio language.
 
 ### 4. Add strict acquisition profiles
@@ -196,7 +196,7 @@ proof against leaks: run this outage test on your actual host before downloads.
    already reconnected; it must never return the home IP.
 3. Restore with `docker compose restart gluetun qbittorrent`, then repeat the check.
 
-Plex stays outside the VPN. Surfshark does not provide incoming port forwarding;
+Jellyfin stays outside the VPN. Surfshark does not provide incoming port forwarding;
 peer connectivity/seeding may be limited. The VPN does not give remote access to
 your home server. Prowlarr/Jackett searches go through Surfshark only when their
 proxy is set as above; when the VPN is down those searches fail instead of leaking.
@@ -226,13 +226,13 @@ No scheduled jobs or external notifications are created by installing this repo.
 Sonarr, Radarr, qBittorrent, Gluetun, Caddy and Authelia are versioned in Compose.
 Other inherited images still follow their release channels; review and pin them
 to tested tags/digests before a production rollout. Back up before pulling newer
-images. No automatic container updater is enabled. Plex no longer runs privileged.
+images. No automatic container updater is enabled. Jellyfin does not run privileged.
 Logs rotate at 10 MiB × 3 files per container.
 
 Extra inherited services are opt-in via `docker compose --profile extras up -d`:
 Lidarr, Jackett, Ombi, Heimdall, Huntarr, Suggestarr and FlareSolverr. Their ports
 are loopback-only and have no default public reverse-proxy routes. Prowlarr and
-Overseerr are the default source/request apps. Older setup context is archived in
+Jellyseerr are the default source/request apps. Older setup context is archived in
 [docs/upstream-setup.md](docs/upstream-setup.md); its port/network assumptions are
 historical.
 
@@ -245,7 +245,7 @@ bash -n scripts/backup.sh scripts/vpn-check.sh
 ```
 
 CI also runs Docker Compose interpolation checks, Authelia/Caddy native config
-validation, and a portal image build using public dummy credentials. Live Plex
+validation, and a portal image build using public dummy credentials. Live Jellyfin
 playback, client behavior, Surfshark credentials, kill-switch operation, TLS trust
 and real release-language detection require a configured deployment and are not
 claimed by the unit tests.

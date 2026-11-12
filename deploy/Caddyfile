@@ -26,6 +26,11 @@ auth.{$MEDIA_DOMAIN} {
     import protected
     reverse_proxy portal:8090
 }
+jellyfin.{$MEDIA_DOMAIN} {
+    import private_tls
+    import protected
+    reverse_proxy jellyfin:8096
+}
 sonarr.{$MEDIA_DOMAIN} {
     import private_tls
     import protected
@@ -49,7 +54,7 @@ bazarr.{$MEDIA_DOMAIN} {
 requests.{$MEDIA_DOMAIN} {
     import private_tls
     import protected
-    reverse_proxy overseerr:5055
+    reverse_proxy jellyseerr:5055
 }
 downloads.{$MEDIA_DOMAIN} {
     import private_tls

@@ -8,7 +8,6 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
-from xml.etree import ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('portal', ROOT / 'portal/app.py')
@@ -16,16 +15,22 @@ app = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(app)
 
 
-def video(audio='deu', subtitle='eng', extra='', forced='0'):
-    return ET.fromstring(f'''<Video ratingKey="7"><Media id="8" videoResolution="1080"><Part id="9">
-      <Stream id="10" streamType="2" languageCode="{audio}" selected="1"/>
-      <Stream id="11" streamType="3" languageCode="{subtitle}" forced="{forced}" selected="1"/>
-      {extra}</Part></Media></Video>''')
+ITEM = '7' * 32
+MEDIA = '8' * 32
+
+
+def video(audio='deu', subtitle='eng', forced=False):
+    return {'Id': ITEM, 'Type': 'Movie', 'MediaSources': [{'Id': MEDIA, 'MediaStreams': [
+        {'Type': 'Video', 'Height': 1080},
+        {'Type': 'Audio', 'Language': audio, 'IsDefault': True},
+        {'Type': 'Subtitle', 'Language': subtitle, 'IsForced': forced}]}]}
 
 
 class AvailabilityTests(unittest.TestCase):
     def test_german_audio_with_english_subtitles(self):
-        self.assertEqual(app.availability(video(), 'de', 'en')['state'], 'available')
+        result = app.availability(video(), 'de', 'en')
+        self.assertEqual(result['state'], 'available')
+        self.assertEqual(result['versions'][0]['resolution'], '1080p')
 
     def test_languages_and_aliases(self):
         for key, aliases in app.LANGUAGES.items():
@@ -46,76 +51,82 @@ class AvailabilityTests(unittest.TestCase):
         self.assertEqual(app.availability(video('jpn', 'ger'), 'ja', 'en')['state'], 'missing_subtitles')
 
     def test_forced_subtitles_do_not_count_as_full(self):
-        self.assertEqual(app.availability(video('jpn', forced='1'), 'ja', 'en')['state'], 'missing_subtitles')
+        self.assertEqual(app.availability(video('jpn', forced=True), 'ja', 'en')['state'], 'missing_subtitles')
 
     def test_unknown_audio_is_not_reported_as_nonexistent(self):
-        self.assertEqual(app.availability(video(''), 'de', 'none')['state'], 'unknown')
-        self.assertEqual(app.availability(ET.fromstring('<Video/>'), 'de', 'none')['state'], 'unknown')
-
-    def test_language_tag(self):
-        v = video('')
-        v.find('Media/Part/Stream').set('languageTag', 'de-DE')
-        self.assertEqual(app.availability(v, 'de', 'none')['state'], 'available')
+        for code in ['', 'und', None]:
+            self.assertEqual(app.availability(video(code), 'de', 'none')['state'], 'unknown')
+        self.assertEqual(app.availability({'Type': 'Movie'}, 'de', 'none')['state'], 'unknown')
 
     def test_untagged_subtitles_remain_unknown(self):
         self.assertEqual(app.availability(video('jpn', ''), 'ja', 'en')['state'], 'unknown')
 
-    def test_multipart_requires_audio_in_every_part(self):
-        v = video()
-        v.find('Media').append(video('eng').find('Media/Part'))
-        self.assertEqual(app.availability(v, 'de', 'none')['state'], 'missing_audio')
-
     def test_cannot_mix_audio_and_subtitles_across_versions(self):
         v = video('jpn', 'deu')
-        second = video('eng', 'eng').find('Media')
-        second.set('id', '99')
-        v.append(second)
+        v['MediaSources'].append(video('eng', 'eng')['MediaSources'][0] | {'Id': '9' * 32})
         self.assertEqual(app.availability(v, 'ja', 'en')['state'], 'missing_subtitles')
 
     def test_commentary_does_not_count_as_dub(self):
         v = video()
-        v.find('Media/Part/Stream').set('commentary', '1')
+        v['MediaSources'][0]['MediaStreams'][1]['Title'] = 'Director Commentary'
         self.assertEqual(app.availability(v, 'de', 'none')['state'], 'missing_audio')
 
     def test_subtitles_off_needs_no_subtitle_track(self):
         v = video()
-        p = v.find('Media/Part')
-        p.remove(p.findall('Stream')[1])
+        v['MediaSources'][0]['MediaStreams'].pop()
         self.assertEqual(app.availability(v, 'de', 'none')['state'], 'available')
 
 
 class SelectionTests(unittest.TestCase):
-    def test_unavailable_selection_never_writes_to_plex(self):
-        p = app.Plex()
-        with patch.object(p, 'metadata', return_value=video('eng')), patch.object(p, 'request') as req:
+    def jellyfin(self, saved):
+        j = app.Jellyfin()
+        j.uid = 'a' * 32
+        answers = {'/Users/' + j.uid: {'Configuration': {'EnableNextEpisodeAutoPlay': True}}}
+        def request(path, params=None, body=None):
+            if body is not None:
+                answers['/Users/' + j.uid] = {'Configuration': body if saved else {}}
+                return {}
+            return answers[path]
+        return j, request
+
+    def test_unavailable_selection_never_writes(self):
+        j, request = self.jellyfin(True)
+        with patch.object(j, 'metadata', return_value=video('eng')), patch.object(j, 'request', side_effect=request) as req:
             with self.assertRaises(ValueError):
-                p.select('7', 'de', 'none', '8')
+                j.select(ITEM, 'de', 'none', MEDIA)
             req.assert_not_called()
 
-    def test_save_and_readback(self):
-        p = app.Plex()
-        with patch.object(p, 'metadata', return_value=video()), patch.object(p, 'request', return_value=ET.fromstring('<MediaContainer machineIdentifier="server"/>')) as req:
-            result = p.select('7', 'de', 'en', '8')
-            req.assert_any_call('/library/parts/9', {'audioStreamID': '10', 'subtitleStreamID': '11', 'allParts': 0}, 'PUT')
-            self.assertIn('server/server/details', result['plexUrl'])
+    def test_save_preference_and_readback(self):
+        j, request = self.jellyfin(True)
+        with patch.object(j, 'metadata', return_value=video()), patch.object(j, 'request', side_effect=request) as req, \
+                patch.dict(os.environ, {'MEDIA_DOMAIN': 'media.home.arpa'}):
+            result = j.select(ITEM, 'de', 'en', MEDIA)
+        req.assert_any_call('/Users/Configuration', {'userId': j.uid}, {'EnableNextEpisodeAutoPlay': True, 'AudioLanguagePreference': 'ger',
+                            'PlayDefaultAudioTrack': False, 'SubtitleLanguagePreference': 'eng', 'SubtitleMode': 'Always'})
+        self.assertEqual(result['jellyfinUrl'], f'https://jellyfin.media.home.arpa/web/#/details?id={ITEM}')
+        self.assertIn('German audio, English subtitles', result['message'])
 
     def test_unconfirmed_write_is_an_error(self):
-        p = app.Plex()
-        v = video()
-        v.find('Media/Part/Stream').set('selected', '0')
-        with patch.object(p, 'metadata', return_value=v), patch.object(p, 'request'):
+        j, request = self.jellyfin(False)
+        with patch.object(j, 'metadata', return_value=video()), patch.object(j, 'request', side_effect=request):
             with self.assertRaises(app.UpstreamError):
-                p.select('7', 'de', 'en', '8')
+                j.select(ITEM, 'de', 'en', MEDIA)
 
     def test_path_traversal_is_rejected(self):
-        for value in ['../7', '7?x=1', '７', '-1', '']:
+        for value in ['../7', '7?x=1', '７', '-1', '', '7' * 31, 'A' * 32]:
             with self.assertRaises(ValueError):
-                app.numeric(value)
+                app.ident(value)
 
-    def test_missing_plex_token_is_configuration_error(self):
-        with patch.dict(os.environ, {'PLEX_TOKEN': ''}):
+    def test_missing_api_key_is_configuration_error(self):
+        with patch.dict(os.environ, {'JELLYFIN_API_KEY': '', 'JELLYFIN_USER': 'me'}):
             with self.assertRaises(app.UpstreamError):
-                app.Plex().request('/')
+                app.Jellyfin().request('/Users')
+
+    def test_api_key_sent_in_authorization_header(self):
+        with patch.dict(os.environ, {'JELLYFIN_API_KEY': 'k', 'JELLYFIN_USER': 'Me'}), patch.object(app, 'urlopen') as opened:
+            opened.return_value.__enter__.return_value.read.return_value = json.dumps([{'Name': 'me', 'Id': 'b' * 32}]).encode()
+            self.assertEqual(app.Jellyfin().user(), 'b' * 32)
+        self.assertEqual(opened.call_args[0][0].get_header('Authorization'), 'MediaBrowser Token="k"')
 
 
 class HTTPTests(unittest.TestCase):
@@ -153,7 +164,7 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(headers['Cache-Control'], 'no-store')
         self.assertIn("frame-ancestors 'none'", headers['Content-Security-Policy'])
-        self.assertNotIn(b'X-Plex-Token', body)
+        self.assertNotIn(b'JELLYFIN_API_KEY', body)
 
     def test_invalid_json_is_handled(self):
         with patch.dict(os.environ, {'PORTAL_ORIGIN': 'https://media.home.arpa'}):
@@ -161,8 +172,8 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(code, 400)
 
     def test_upstream_error_never_becomes_missing_language(self):
-        with patch.object(app.Plex, 'metadata', side_effect=app.UpstreamError('Connection unavailable')):
-            code, _, body = self.request('/api/availability?item=7&audio=de&subtitle=none', headers={'Remote-User': 'admin'})
+        with patch.object(app.Jellyfin, 'metadata', side_effect=app.UpstreamError('Connection unavailable')):
+            code, _, body = self.request(f'/api/availability?item={ITEM}&audio=de&subtitle=none', headers={'Remote-User': 'admin'})
             self.assertEqual(code, 502)
             self.assertIn(b'Connection unavailable', body)
 

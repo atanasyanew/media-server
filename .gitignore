@@ -12,8 +12,8 @@ provision/prowlarr/*
 provision/lidarr/*
 provision/sonarr/*
 provision/radarr/*
-provision/plex/*
-provision/overseerr/*
+provision/jellyfin/*
+provision/jellyseerr/*
 provision/flaresolverr/*
 provision/huntarr/*
 provision/suggestarr/*

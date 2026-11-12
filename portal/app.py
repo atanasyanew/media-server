@@ -1,88 +1,84 @@
-"""Language selector for a single Plex account, behind Caddy + Authelia.
+"""Language selector for a single Jellyfin account, behind Caddy + Authelia.
 
 No media files, API keys or arbitrary upstream URLs are exposed to the browser.
-Plex itself remains the player. Stream selections apply to PLEX_TOKEN's account.
+Jellyfin itself remains the player. Language preferences apply to JELLYFIN_USER.
 """
 import hmac
 import json
 import os
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, quote, urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import Request, urlopen
-from xml.etree import ElementTree as ET
 
 LANGUAGES = {'de': {'de', 'deu', 'ger'}, 'en': {'en', 'eng'}, 'ja': {'ja', 'jpn'}}
 NAMES = {'de': 'German', 'en': 'English', 'ja': 'Japanese'}
+# Jellyfin matches a preference against both ISO 639-2 forms (ger and deu).
+CODES = {'de': 'ger', 'en': 'eng', 'ja': 'jpn'}
 
 
 class UpstreamError(Exception):
     pass
 
 
-def numeric(value):
+def ident(value):
     value = str(value)
-    if not value.isascii() or not value.isdigit() or len(value) > 20:
+    if not re.fullmatch(r'[0-9a-f]{32}', value):
         raise ValueError('Invalid item identifier.')
     return value
 
 
 def language(stream):
-    code = stream.get('languageCode', '').lower()
-    tag = stream.get('languageTag', '').lower().split('-')[0]
+    code = (stream.get('Language') or '').lower()
     for key, aliases in LANGUAGES.items():
-        if code in aliases or tag in aliases:
+        if code in aliases:
             return key
     # Known other languages must not be mistaken for untagged audio.
-    return code or tag or 'unknown'
+    return 'unknown' if code in {'', 'und'} else code
 
 
-def stream_match(part, kind, lang):
-    candidates = [s for s in part.findall('Stream')
-                  if s.get('streamType') == str(kind) and language(s) == lang
-                  and (kind != 3 or s.get('forced', '0') != '1')]
-    # Prefer full audio to commentary/descriptive tracks, then selected tracks.
-    candidates = [s for s in candidates if s.get('commentary', '0') != '1'
-                  and s.get('visualImpaired', '0') != '1'] if kind == 2 else candidates
-    candidates.sort(key=lambda s: s.get('selected', '0') != '1')
+def extra(stream):
+    """Commentary and audio description tracks are not a dub."""
+    title = (stream.get('Title') or '').lower()
+    return 'commentary' in title or 'descri' in title
+
+
+def stream_match(source, kind, lang):
+    candidates = [s for s in source.get('MediaStreams') or []
+                  if s.get('Type') == kind and language(s) == lang
+                  and not (kind == 'Subtitle' and s.get('IsForced'))
+                  and not (kind == 'Audio' and extra(s))]
+    candidates.sort(key=lambda s: not s.get('IsDefault'))
     return candidates[0] if candidates else None
 
 
-def availability(video, audio, subtitle):
-    """A version is playable only when EVERY part has the requested tracks."""
+def availability(item, audio, subtitle):
+    """A version is playable only when it has the requested tracks."""
     if audio not in LANGUAGES or subtitle not in {*LANGUAGES, 'none'}:
         raise ValueError('Choose German, English or Japanese and a subtitle language.')
     if audio == 'ja' and subtitle == 'none':
         raise ValueError('Choose a subtitle language for Japanese audio.')
     versions = []
     unknown = False
-    for media in video.findall('Media'):
-        parts = media.findall('Part')
-        if not parts:
-            unknown = True
-            continue
-        tracks = []
-        for part in parts:
-            streams = part.findall('Stream')
-            unknown |= not any(s.get('streamType') == '2' for s in streams)
-            unknown |= any(s.get('streamType') == '2' and language(s) == 'unknown' for s in streams)
-            if subtitle != 'none':
-                unknown |= any(s.get('streamType') == '3' and language(s) == 'unknown' for s in streams)
-            a = stream_match(part, 2, audio)
-            sub = stream_match(part, 3, subtitle) if subtitle != 'none' else None
-            tracks.append({'part': part.get('id'), 'audio': a.get('id') if a is not None else None,
-                           'subtitle': sub.get('id') if sub is not None else '0' if subtitle == 'none' else None})
-        audio_ok = all(t['audio'] for t in tracks)
-        subtitle_ok = all(t['subtitle'] is not None for t in tracks)
-        versions.append({'id': media.get('id'), 'resolution': media.get('videoResolution', 'unknown'),
+    for source in item.get('MediaSources') or []:
+        streams = source.get('MediaStreams') or []
+        unknown |= not any(s.get('Type') == 'Audio' for s in streams)
+        unknown |= any(s.get('Type') == 'Audio' and language(s) == 'unknown' for s in streams)
+        if subtitle != 'none':
+            unknown |= any(s.get('Type') == 'Subtitle' and language(s) == 'unknown' for s in streams)
+        audio_ok = stream_match(source, 'Audio', audio) is not None
+        subtitle_ok = subtitle == 'none' or stream_match(source, 'Subtitle', subtitle) is not None
+        height = next((s.get('Height') for s in streams if s.get('Type') == 'Video' and s.get('Height')), None)
+        versions.append({'id': source.get('Id'), 'resolution': f'{height}p' if height else 'unknown',
                          'available': audio_ok and subtitle_ok, 'audioAvailable': audio_ok,
-                         'subtitlesAvailable': subtitle_ok, 'tracks': tracks})
+                         'subtitlesAvailable': subtitle_ok})
     playable = [v for v in versions if v['available']]
     if playable:
         state, message = 'available', 'Available in your library.'
     elif unknown or not versions:
-        state, message = 'unknown', 'Language availability is unknown: some tracks are untagged or not analyzed. Analyze the file in Plex.'
+        state, message = 'unknown', 'Language availability is unknown: some tracks are untagged or not analyzed. Refresh the metadata in Jellyfin.'
     elif any(v['audioAvailable'] for v in versions):
         state, message = 'missing_subtitles', f'{NAMES[subtitle]} subtitles are not available with {NAMES[audio]} audio in your library.'
     else:
@@ -90,88 +86,79 @@ def availability(video, audio, subtitle):
     return {'state': state, 'message': message, 'versions': versions}
 
 
-class Plex:
+class Jellyfin:
     def __init__(self):
-        self.base = os.environ.get('PLEX_URL', 'http://plex:32400').rstrip('/')
-        self.token = os.environ.get('PLEX_TOKEN', '')
+        self.base = os.environ.get('JELLYFIN_URL', 'http://jellyfin:8096').rstrip('/')
+        self.key = os.environ.get('JELLYFIN_API_KEY', '')
+        self.username = os.environ.get('JELLYFIN_USER', '')
+        self.uid = None
 
-    def request(self, path, params=None, method='GET'):
-        if not self.token:
-            raise UpstreamError('Plex connection is not configured. Add PLEX_TOKEN on the server.')
+    def request(self, path, params=None, body=None):
+        if not self.key or not self.username:
+            raise UpstreamError('Jellyfin connection is not configured. Add JELLYFIN_API_KEY and JELLYFIN_USER on the server.')
         url = self.base + path + ('?' + urlencode(params) if params else '')
-        req = Request(url, headers={'X-Plex-Token': self.token, 'Accept': 'application/xml'}, method=method)
+        req = Request(url, data=None if body is None else json.dumps(body).encode(), method='GET' if body is None else 'POST',
+                      headers={'Authorization': f'MediaBrowser Token="{self.key}"', 'Accept': 'application/json', 'Content-Type': 'application/json'})
         try:
             with urlopen(req, timeout=20) as response:
                 data = response.read(16 * 1024 * 1024 + 1)
             if len(data) > 16 * 1024 * 1024:
-                raise UpstreamError('Plex response is too large. Narrow your search.')
-            if not data.strip():
-                return ET.Element('MediaContainer')
-            return ET.fromstring(data)
-        except (HTTPError, URLError, TimeoutError, ET.ParseError):
-            raise UpstreamError('Plex could not be reached or rejected the request. Check its connection and token.') from None
+                raise UpstreamError('Jellyfin response is too large. Narrow your search.')
+            return json.loads(data) if data.strip() else {}
+        except (HTTPError, URLError, TimeoutError, ValueError):
+            raise UpstreamError('Jellyfin could not be reached or rejected the request. Check JELLYFIN_API_KEY and JELLYFIN_USER.') from None
+
+    def user(self):
+        if self.uid is None:
+            match = [u for u in self.request('/Users') if u.get('Name', '').lower() == self.username.lower()]
+            if not match:
+                raise UpstreamError('JELLYFIN_USER was not found in Jellyfin.')
+            self.uid = ident(match[0]['Id'])
+        return self.uid
 
     def metadata(self, item):
-        root = self.request('/library/metadata/' + numeric(item))
-        video = root.find('Video')
-        if video is None:
+        data = self.request('/Items/' + ident(item), {'userId': self.user()})
+        if data.get('Type') not in {'Movie', 'Episode'}:
             raise ValueError('This item has no playable movie or episode.')
-        return video
+        return data
 
     def libraries(self):
-        return [{'id': d.get('key'), 'title': d.get('title'), 'type': d.get('type')}
-                for d in self.request('/library/sections').findall('Directory')
-                if d.get('type') in {'movie', 'show'}]
+        return [{'id': d.get('Id'), 'title': d.get('Name'), 'type': d.get('CollectionType')}
+                for d in self.request('/UserViews', {'userId': self.user()}).get('Items', [])
+                if d.get('CollectionType') in {'movies', 'tvshows'}]
 
     def items(self, section, start, search):
         library = next((s for s in self.libraries() if s['id'] == section), None)
         if not library:
             raise ValueError('Library not found.')
-        params = {'type': 1 if library['type'] == 'movie' else 4,
-                  'X-Plex-Container-Start': start, 'X-Plex-Container-Size': 50,
-                  'includeGuids': 1, 'sort': 'titleSort'}
+        params = {'userId': self.user(), 'parentId': ident(section), 'recursive': 'true', 'sortBy': 'SortName',
+                  'includeItemTypes': 'Movie' if library['type'] == 'movies' else 'Episode', 'startIndex': start, 'limit': 50}
         if search:
-            params['title'] = search[:200]
-        root = self.request('/library/sections/' + numeric(section) + '/all', params)
+            params['searchTerm'] = search[:200]
+        data = self.request('/Items', params)
         items = []
-        for v in root.findall('Video'):
-            title = v.get('title', 'Untitled')
-            if v.get('type') == 'episode':
-                title = f"{v.get('grandparentTitle', '')} · S{v.get('parentIndex', '?')} E{v.get('index', '?')} · {title}"
-            items.append({'id': v.get('ratingKey'), 'title': title, 'year': v.get('year', '')})
-        return {'items': items, 'total': int(root.get('totalSize', root.get('size', len(items)))), 'start': start}
+        for v in data.get('Items', []):
+            title = v.get('Name', 'Untitled')
+            if v.get('Type') == 'Episode':
+                title = f"{v.get('SeriesName', '')} · S{v.get('ParentIndexNumber', '?')} E{v.get('IndexNumber', '?')} · {title}"
+            items.append({'id': v.get('Id'), 'title': title, 'year': v.get('ProductionYear', '')})
+        return {'items': items, 'total': int(data.get('TotalRecordCount', len(items))), 'start': start}
 
     def select(self, item, audio, subtitle, media_id):
-        video = self.metadata(item)
-        result = availability(video, audio, subtitle)
+        result = availability(self.metadata(item), audio, subtitle)
         version = next((v for v in result['versions'] if v['id'] == media_id and v['available']), None)
         if not version:
             raise ValueError('The requested audio/subtitles are not available in this version. Nothing was changed.')
-        # Validate every part and stream before making any write. Never substitute a language.
-        for track in version['tracks']:
-            for value in track.values():
-                numeric(value)
-        try:
-            for track in version['tracks']:
-                self.request('/library/parts/' + track['part'],
-                             {'audioStreamID': track['audio'], 'subtitleStreamID': track['subtitle'], 'allParts': 0}, 'PUT')
-            refreshed = self.metadata(item)
-            parts = {p.get('id'): p for p in refreshed.findall('Media/Part')}
-            for track in version['tracks']:
-                p = parts.get(track['part'])
-                if p is None:
-                    raise UpstreamError('The file changed during selection. Refresh and try again.')
-                selected = {s.get('id') for s in p.findall('Stream') if s.get('selected') == '1'}
-                selected_sub = {s.get('id') for s in p.findall('Stream') if s.get('streamType') == '3' and s.get('selected') == '1'}
-                if track['audio'] not in selected or (track['subtitle'] != '0' and track['subtitle'] not in selected_sub) or (track['subtitle'] == '0' and selected_sub):
-                    raise UpstreamError('Plex did not confirm the selected tracks. Check them in the Plex player.')
-        except UpstreamError:
-            raise UpstreamError('Plex could not confirm all track changes. Some parts may have changed; check the Plex player before watching.') from None
-        machine = self.request('/').get('machineIdentifier', '')
-        if not machine:
-            raise UpstreamError('Tracks were saved, but Plex did not provide its server ID. Open the title directly in Plex.')
-        return {'message': 'Audio and subtitles saved for your connected Plex account. Open Plex and choose the matching version if prompted.',
-                'plexUrl': 'https://app.plex.tv/desktop/#!/server/' + quote(machine, safe='') + '/details?key=' + quote('/library/metadata/' + numeric(item), safe='')}
+        uid = self.user()
+        config = self.request('/Users/' + uid).get('Configuration') or {}
+        wanted = {'AudioLanguagePreference': CODES[audio], 'PlayDefaultAudioTrack': False,
+                  'SubtitleLanguagePreference': CODES.get(subtitle, ''), 'SubtitleMode': 'None' if subtitle == 'none' else 'Always'}
+        self.request('/Users/Configuration', {'userId': uid}, {**config, **wanted})
+        saved = self.request('/Users/' + uid).get('Configuration') or {}
+        if any((saved.get(k) or '') != (v or '') for k, v in wanted.items()):
+            raise UpstreamError('Jellyfin did not confirm the language preference. Check it in Jellyfin → Settings → Playback.')
+        return {'message': f"Saved as your Jellyfin preference: {NAMES[audio]} audio, {'no subtitles' if subtitle == 'none' else NAMES[subtitle] + ' subtitles'}. Jellyfin uses it for every title that has these tracks. If a title has several versions, choose {version['resolution']} in the player.",
+                'jellyfinUrl': f"https://jellyfin.{os.environ.get('MEDIA_DOMAIN', '')}/web/#/details?id={ident(item)}"}
 
 
 class VPN:
@@ -258,22 +245,22 @@ class Handler(BaseHTTPRequestHandler):
         q = parse_qs(parsed.query)
         get = lambda key, default='': q.get(key, [default])[0]
         try:
-            plex = Plex()
+            jellyfin = Jellyfin()
             if not write and parsed.path == '/':
                 return self.send(200, Path(__file__).with_name('index.html').read_bytes(), 'text/html; charset=utf-8')
             if not write and parsed.path == '/api/config':
                 domain = os.environ.get('MEDIA_DOMAIN', '')
                 return self.send(200, {'apps': {key: f'https://{sub}.{domain}' for key, sub in
-                    [('Series', 'sonarr'), ('Movies', 'radarr'), ('Sources', 'prowlarr'), ('Subtitles', 'bazarr'), ('Requests', 'requests'), ('Downloads', 'downloads'), ('Account / sign out', 'auth')]}})
+                    [('Watch', 'jellyfin'), ('Series', 'sonarr'), ('Movies', 'radarr'), ('Sources', 'prowlarr'), ('Subtitles', 'bazarr'), ('Requests', 'requests'), ('Downloads', 'downloads'), ('Account / sign out', 'auth')]}})
             if not write and parsed.path == '/api/libraries':
-                return self.send(200, plex.libraries())
+                return self.send(200, jellyfin.libraries())
             if not write and parsed.path == '/api/items':
                 start = int(get('start', '0'))
                 if start < 0 or start > 1000000:
                     raise ValueError('Invalid page.')
-                return self.send(200, plex.items(numeric(get('section')), start, get('search')))
+                return self.send(200, jellyfin.items(ident(get('section')), start, get('search')))
             if not write and parsed.path == '/api/availability':
-                return self.send(200, availability(plex.metadata(get('item')), get('audio', 'de'), get('subtitle', 'none')))
+                return self.send(200, availability(jellyfin.metadata(get('item')), get('audio', 'de'), get('subtitle', 'none')))
             if not write and parsed.path == '/api/vpn':
                 return self.send(200, VPN().status())
             if write and parsed.path in {'/api/select', '/api/vpn'}:
@@ -286,7 +273,7 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send(200, VPN().save(str(data['username']), str(data['password'])))
                     except (ValueError, KeyError, TypeError):
                         return self.send(400, {'error': 'Enter the Surfshark manual-setup username and password.'})
-                return self.send(200, plex.select(numeric(data['item']), data['audio'], data['subtitle'], numeric(data['media'])))
+                return self.send(200, jellyfin.select(ident(data['item']), data['audio'], data['subtitle'], ident(data['media'])))
             return self.send(404, {'error': 'Not found.'})
         except (ValueError, KeyError, TypeError, UnicodeError):
             return self.send(400, {'error': 'Invalid selection. Refresh the page and choose a listed item, language and version.'})

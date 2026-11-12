@@ -1,19 +1,16 @@
 # Requires Docker Compose v2.20+; run scripts/setup.py before starting.
 services:
-  plex:
-    image: plexinc/pms-docker
-    container_name: plex
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:10.11.8
+    container_name: jellyfin
     env_file:
     - ./provision/.env.defaults
     environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
       TZ: ${TZ:-Europe/Luxembourg}
-      PLEX_CLAIM: ${PLEX_CLAIM:-}
-      HOSTNAME: PlexServer
-      ADVERTISE_IP: http://${PLEX_BIND_IP:-127.0.0.1}:32400/
-      PLEX_UID: ${PUID:-1000}
-      PLEX_GID: ${PGID:-1000}
     volumes:
-    - ./provision/plex:/config
+    - ./provision/jellyfin:/config
     - ./content/media:/data/media
     restart: unless-stopped
     logging:
@@ -22,7 +19,7 @@ services:
         max-size: 10m
         max-file: '3'
     ports:
-    - ${PLEX_BIND_IP:-127.0.0.1}:32400:32400
+    - ${JELLYFIN_BIND_IP:-127.0.0.1}:8096:8096
     networks:
     - media-network
   radarr:
@@ -228,13 +225,13 @@ services:
       TZ: ${TZ:-Europe/Luxembourg}
     profiles:
     - extras
-  overseerr:
-    image: lscr.io/linuxserver/overseerr
-    container_name: overseerr
+  jellyseerr:
+    image: fallenbagel/jellyseerr:2.7.3
+    container_name: jellyseerr
     env_file:
     - ./provision/.env.defaults
     volumes:
-    - ./provision/overseerr:/config
+    - ./provision/jellyseerr:/app/config
     ports:
     - 127.0.0.1:5055:5055
     restart: unless-stopped
@@ -353,8 +350,9 @@ services:
       dockerfile: portal/Dockerfile
     environment:
       MEDIA_DOMAIN: ${MEDIA_DOMAIN:?Set MEDIA_DOMAIN}
-      PLEX_URL: http://plex:32400
-      PLEX_TOKEN: ${PLEX_TOKEN:-}
+      JELLYFIN_URL: http://jellyfin:8096
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
+      JELLYFIN_USER: ${JELLYFIN_USER:-}
       PORTAL_ORIGIN: https://${MEDIA_DOMAIN}
     user: ${PUID:-1000}:${PGID:-1000}
     volumes:

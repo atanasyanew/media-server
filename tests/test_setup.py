@@ -54,8 +54,8 @@ class SetupTests(unittest.TestCase):
     def test_env_is_data_not_shell(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / '.env'
-            p.write_text("PLEX_TOKEN='$(touch unexpected)'\n")
-            self.assertEqual(setup.read_env(p)['PLEX_TOKEN'], '$(touch unexpected)')
+            p.write_text("JELLYFIN_API_KEY='$(touch unexpected)'\n")
+            self.assertEqual(setup.read_env(p)['JELLYFIN_API_KEY'], '$(touch unexpected)')
 
 
 class ProfileTests(unittest.TestCase):
@@ -106,7 +106,7 @@ class ComposeTests(unittest.TestCase):
 
     def test_admin_ports_are_loopback_only(self):
         for name, service in self.services.items():
-            if name in {'plex', 'caddy'}:
+            if name in {'jellyfin', 'caddy'}:
                 continue
             for port in service.get('ports', []):
                 self.assertTrue(port.startswith('127.0.0.1:'), (name, port))
@@ -117,7 +117,7 @@ class ComposeTests(unittest.TestCase):
 
     def test_shared_data_mount_and_least_privilege(self):
         self.assertIn('./content:/data', self.services['qbittorrent']['volumes'])
-        self.assertNotIn('privileged', self.services['plex'])
+        self.assertNotIn('privileged', self.services['jellyfin'])
 
 
 if __name__ == '__main__':
